@@ -200,10 +200,7 @@ const AppRoutes = () => {
         <Route
           path="/pg-dashboard"
           element={
-            <ProtectedRoute
-              allowedRoles={['pg']}
-              allowedDepartments={['public health dentistry', 'publichealthdentistry', 'publichealth', 'communitydentistry']}
-            >
+            <ProtectedRoute allowedRoles={['pg']}>
               <PGDashboard />
             </ProtectedRoute>
           }
@@ -212,10 +209,7 @@ const AppRoutes = () => {
         <Route
           path="/ug-dashboard"
           element={
-            <ProtectedRoute
-              allowedRoles={['ug']}
-              allowedDepartments={['public health dentistry', 'publichealthdentistry', 'publichealth', 'communitydentistry']}
-            >
+            <ProtectedRoute allowedRoles={['ug']}>
               <UgDashboardRoute />
             </ProtectedRoute>
           }

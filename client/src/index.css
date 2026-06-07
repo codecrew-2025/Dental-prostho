@@ -58,7 +58,7 @@ body {
   left: 0;
   right: 0;
   z-index: 1000;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 }
 
 .dental-app .container-main {
@@ -67,6 +67,9 @@ body {
   align-items: center;
   height: 60px;
   gap: 20px;
+  width: 100%;
+  padding: 0 40px;
+  box-sizing: border-box;
 }
 
 /* Logo */
@@ -138,8 +141,10 @@ nav ul li a:hover {
 
 /* Prevent content underlap - FIXED THIS */
 main {
-  padding-top: 90px; /* Increased to account for fixed header */
-  min-height: calc(100vh - 90px); /* Ensure main takes at least full viewport height */
+  padding-top: 90px;
+  /* Increased to account for fixed header */
+  min-height: calc(100vh - 90px);
+  /* Ensure main takes at least full viewport height */
 }
 
 /* Anchor scroll offset for fixed header */
@@ -151,11 +156,11 @@ section,
 /* Hero section */
 .hero {
   background:
-    linear-gradient(rgba(37,40,107,0.7), rgba(37,40,107,0.7)),
+    linear-gradient(rgba(37, 40, 107, 0.7), rgba(37, 40, 107, 0.7)),
     url('/images/campus.png') center/cover no-repeat;
   color: #fff;
   text-align: center;
-  padding: 100px 20px;
+  padding: 100px 0;
   min-height: 400px;
   display: flex;
   align-items: center;
@@ -165,7 +170,7 @@ section,
   font-size: 48px;
   font-weight: 700;
   margin-bottom: 20px;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .hero p {
@@ -276,7 +281,7 @@ section h2::after {
   padding: 30px 20px;
   background-color: white;
   border-radius: 12px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
   transition: transform 0.3s ease;
 }
 
@@ -308,7 +313,7 @@ section h2::after {
   background-color: white;
   padding: 30px;
   border-radius: 12px;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
   text-align: center;
   transition: all 0.3s ease;
   display: flex;
@@ -318,7 +323,7 @@ section h2::after {
 
 .service-card:hover {
   transform: translateY(-8px);
-  box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
 }
 
 .service-card .icon-or-image {
@@ -376,14 +381,14 @@ section h2::after {
   background-color: white;
   padding: 35px 30px;
   border-radius: 12px;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
   position: relative;
   transition: all 0.3s ease;
 }
 
 .testimonial-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
 }
 
 /* Blog Section */
@@ -396,14 +401,14 @@ section h2::after {
 .blog-post-card {
   background-color: white;
   border-radius: 12px;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   transition: all 0.3s ease;
 }
 
 .blog-post-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
 }
 
 /* Contact Section */
@@ -418,7 +423,7 @@ section h2::after {
   background-color: white;
   padding: 30px 20px;
   border-radius: 12px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
   transition: transform 0.3s ease;
   text-align: center;
 }
@@ -470,7 +475,7 @@ footer p {
   nav ul {
     gap: 20px;
   }
-  
+
   nav ul li a {
     font-size: 14px;
     padding: 6px 10px;
@@ -509,7 +514,8 @@ footer p {
   }
 
   main {
-    padding-top: 130px; /* Increased for taller mobile header */
+    padding-top: 130px;
+    /* Increased for taller mobile header */
   }
 
   section {
@@ -517,7 +523,7 @@ footer p {
   }
 
   .hero {
-    padding: 80px 20px;
+    padding: 80px 0;
     min-height: 400px;
   }
 
@@ -549,18 +555,18 @@ footer p {
 
 @media (max-width: 480px) {
   .container-main {
-    padding: 0 15px;
+    padding: 0;
   }
 
   .dental-app .container-main {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   nav {
     order: 2;
   }
-  
+
   .auth-buttons {
     order: 3;
     margin-top: 15px;
@@ -568,7 +574,8 @@ footer p {
   }
 
   main {
-    padding-top: 150px; /* Even more space for mobile */
+    padding-top: 150px;
+    /* Even more space for mobile */
   }
 
   .hero h1 {
@@ -588,7 +595,7 @@ footer p {
   .contact-item {
     padding: 25px 20px;
   }
-  
+
   footer .container-main {
     flex-direction: column;
     text-align: center;

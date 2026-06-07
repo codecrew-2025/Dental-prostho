@@ -1408,6 +1408,7 @@ const DoctorDashboard = () => {
   };
 
   const fetchAssignedPGsOverview = async ({ silent = false } = {}) => {
+    console.log('🔵 fetchAssignedPGsOverview called');
     try {
       if (!silent) setPGLoading(true);
       setPGError('');
@@ -1418,7 +1419,10 @@ const DoctorDashboard = () => {
         return;
       }
 
-      const res = await fetch(buildApiUrl('/api/auth/doctor/assigned-pgs/overview'), {
+      const url = buildApiUrl('/api/auth/doctor/assigned-pgs/overview');
+      console.log('🔵 Fetching from:', url);
+      
+      const res = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -1431,6 +1435,18 @@ const DoctorDashboard = () => {
       }
 
       const json = await res.json();
+      console.log('🔵 Response received:', { 
+        pgsCount: json.pgs?.length, 
+        appointmentsCount: json.appointments?.length,
+        sampleAppointment: json.appointments?.[0]
+      });
+      
+      // Log all appointments for patient 2603017
+      const patient2603017 = json.appointments?.filter(a => a.patientId === '2603017');
+      if (patient2603017?.length > 0) {
+        console.log('🔍 Found appointments for patient 2603017:', patient2603017);
+      }
+      
       // Defensive client-side filter: ensure department doctors see only PG/UG they supervise
       const rawPgs = Array.isArray(json.pgs) ? json.pgs : [];
       const rawAppointments = Array.isArray(json.appointments) ? json.appointments : [];

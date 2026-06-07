@@ -10,26 +10,12 @@ const XRayBilling = () => {
   const [patientGender, setPatientGender] = useState('male');
   const [isPatientFetched, setIsPatientFetched] = useState(false);
   const [doctorName, setDoctorName] = useState('');
-  const [xrayTypes, setXrayTypes] = useState([]);
-  const [selectedXrays, setSelectedXrays] = useState([]);
-  const [totalAmount, setTotalAmount] = useState(0);
+
   const [paymentMethod, setPaymentMethod] = useState('');
   const [remarks, setRemarks] = useState('');
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
 
-  // X-ray types with prices
-  const xrayOptions = [
-    { id: 1, name: 'Periapical X-Ray (Single Tooth)', price: 150, code: 'PA' },
-    { id: 2, name: 'Bitewing X-Ray', price: 200, code: 'BW' },
-    { id: 3, name: 'Occlusal X-Ray', price: 250, code: 'OC' },
-    { id: 4, name: 'Panoramic X-Ray (OPG)', price: 500, code: 'OPG' },
-    { id: 5, name: 'Cephalometric X-Ray (Lateral)', price: 600, code: 'CEPH' },
-    { id: 6, name: 'Cone Beam CT (CBCT) - Small FOV', price: 2500, code: 'CBCT-S' },
-    { id: 7, name: 'Cone Beam CT (CBCT) - Large FOV', price: 3500, code: 'CBCT-L' },
-    { id: 8, name: 'Full Mouth Series (FMS)', price: 1200, code: 'FMS' },
-    { id: 9, name: 'TMJ X-Ray', price: 400, code: 'TMJ' },
-    { id: 10, name: 'Sinus X-Ray', price: 350, code: 'SINUS' }
-  ];
+
 
   useEffect(() => {
     // Load patient info from localStorage if available
@@ -44,11 +30,7 @@ const XRayBilling = () => {
     if (doctorInfo) setDoctorName(doctorInfo);
   }, []);
 
-  useEffect(() => {
-    // Calculate total amount whenever selected X-rays change
-    const total = selectedXrays.reduce((sum, xray) => sum + (xray.price * xray.quantity), 0);
-    setTotalAmount(total);
-  }, [selectedXrays]);
+
 
   const fetchPatientDetails = async (id) => {
     if (!id.trim()) return;
@@ -74,28 +56,7 @@ const XRayBilling = () => {
     }
   };
 
-  const handleXraySelect = (xray) => {
-    const existing = selectedXrays.find(x => x.id === xray.id);
-    
-    if (existing) {
-      // Remove if already selected
-      setSelectedXrays(selectedXrays.filter(x => x.id !== xray.id));
-    } else {
-      // Add with quantity 1
-      setSelectedXrays([...selectedXrays, { ...xray, quantity: 1 }]);
-    }
-  };
 
-  const updateQuantity = (xrayId, newQuantity) => {
-    if (newQuantity < 1) {
-      setSelectedXrays(selectedXrays.filter(x => x.id !== xrayId));
-      return;
-    }
-    
-    setSelectedXrays(selectedXrays.map(x => 
-      x.id === xrayId ? { ...x, quantity: newQuantity } : x
-    ));
-  };
 
   const handlePaymentMethodSelect = (method) => {
     setPaymentMethod(method);
@@ -147,16 +108,12 @@ const XRayBilling = () => {
   };
 
   const resetForm = () => {
-    setSelectedXrays([]);
-    setTotalAmount(0);
     setPaymentMethod('');
     setRemarks('');
     setIsPatientFetched(false);
   };
 
-  const handlePrintBill = () => {
-    window.print();
-  };
+
 
   return (
     <div className="xray-billing-wrapper">

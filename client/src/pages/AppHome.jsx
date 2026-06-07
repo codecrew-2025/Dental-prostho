@@ -18,7 +18,7 @@ const AppHome = () => {
   const handleBookAppointment = () => navigate('/user');
 
   return (
-    <div id="top" style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
+    <div id="top">
       <div className="dental-app">
         <div className="container-main">
           <Link to="/" className="logo-main">

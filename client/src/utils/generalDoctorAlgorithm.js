@@ -202,7 +202,7 @@ const recommendInvestigations = (form, issues) => {
 /**
  * Recommend specialist department for referral
  */
-const recommendReferralDepartment = (issues, age, provisionalDiagnosis = '') => {
+const recommendReferralDepartment = (issues) => {
   const departmentScore = {};
 
   // Initialize departments
@@ -234,6 +234,7 @@ const recommendReferralDepartment = (issues, age, provisionalDiagnosis = '') => 
 
   // Get top recommended departments
   const sorted = Object.entries(departmentScore)
+    // eslint-disable-next-line no-unused-vars
     .filter(([_, score]) => score > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
@@ -247,7 +248,7 @@ const recommendReferralDepartment = (issues, age, provisionalDiagnosis = '') => 
 const generateClinicalSummary = (form) => {
   const issues = detectDentalIssues(form);
   const investigations = recommendInvestigations(form, issues);
-  const referralDepartments = recommendReferralDepartment(issues, parseInt(form.age, 10));
+  const referralDepartments = recommendReferralDepartment(issues);
 
   return {
     detectedIssues: issues,

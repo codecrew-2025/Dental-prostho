@@ -475,6 +475,11 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
           message: `No PG is assigned under ${specialistDoctor?.name || referredDepartment}. Assign a PG before saving this referral.`,
         });
       }
+      console.log(`✅ GeneralCase created for patient ${patientId}:`);
+      console.log(`   - assignedPgId: ${generalCase.assignedPgId}`);
+      console.log(`   - specialistDoctorId: ${generalCase.specialistDoctorId}`);
+      console.log(`   - specialistStatus: ${generalCase.specialistStatus}`);
+      console.log(`   - referredDepartment: ${generalCase.referredDepartment}`);
     }
 
     await generalCase.save();
@@ -746,12 +751,15 @@ router.get('/assigned-pg-cases', auth, requireRole(['pg', 'ug']), async (req, re
 
     await autoTransferPendingReferralsToPgQueue();
 
+    // 🔥 FIX: Include BOTH 'approved' AND 'pending' status to show newly assigned cases immediately
     const cases = await GeneralCase.find({
       assignedPgId: pgIdentity,
-      specialistStatus: 'approved',
+      specialistStatus: { $in: ['approved', 'pending'] },
     })
       .sort({ pgAssignedAt: -1, createdAt: -1 })
       .lean();
+    
+    console.log(`[PG Assigned Cases] Found ${cases.length} cases for PG ${pgIdentity} with status approved/pending`);
 
     if (!cases.length) {
       return res.json({ success: true, data: [] });

@@ -120,6 +120,7 @@ router.post('/login/patientlogin', async (req, res) => {
   console.log("➡️ Login attempt with identifier:", normalizedIdentifier);
 
   try {
+    const escapedIdentifier = normalizedIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let user = await User.findOne({
       $or: [
         { Identity: { $regex: new RegExp("^" + escapedIdentifier + "$", "i") } },
@@ -1109,6 +1110,9 @@ router.get('/doctor/assigned-pgs', auth, requireRole(['doctor']), async (req, re
 
 // Get overview of assigned PGs with analytics
 router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async (req, res) => {
+  const fs = await import('fs');
+  fs.appendFileSync('debug-pg-appointments.log', `\n\n========================================\n[${new Date().toISOString()}] Endpoint called\n`);
+  
   try {
     const { PatientDetails } = await import('../models/patientDetails.js');
     const generalCaseModule = await import('../models/GeneralCase.js');
@@ -1160,8 +1164,29 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       return String(match[1] || '').trim();
     };
 
+    // Get all PGs that have referrals supervised by this doctor (either created by them OR in their department)
+    const doctorDepartment = String(req.user?.department || '').trim();
+    const doctorIdentity = String(req.user?.Identity || '').trim();
+    
+    // First, find all referrals where this doctor is the specialist doctor
+    const doctorReferrals = await GeneralCase.find({
+      specialistDoctorId: doctorIdentity,
+      specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
+    }, { assignedPgId: 1 }).lean();
+    
+    const pgIdentitiesFromReferrals = [...new Set(
+      doctorReferrals.map(r => String(r.assignedPgId || '').trim()).filter(Boolean)
+    )];
+    
+    // Get PGs either created by this doctor OR assigned cases under this doctor
     const assignedPGs = await User.find(
-      { role: 'pg', createdBy: req.user._id },
+      { 
+        role: 'pg',
+        $or: [
+          { createdBy: req.user._id },
+          { Identity: { $in: pgIdentitiesFromReferrals } }
+        ]
+      },
       { _id: 1, name: 1, Identity: 1, email: 1, phone: 1, department: 1, createdAt: 1 }
     )
       .sort({ createdAt: -1 })
@@ -1185,9 +1210,20 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       )
     );
 
-    const referrals = await GeneralCase.find({ assignedPgId: { $in: pgQueryKeys }, specialistStatus: 'approved' })
+    const referrals = await GeneralCase.find({ 
+      assignedPgId: { $in: pgQueryKeys },  // Show all cases assigned to PGs under this doctor
+      specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
+    })
       .sort({ pgAssignedAt: -1, createdAt: -1 })
       .lean();
+
+    console.log(`[PG Overview] Found ${referrals.length} referrals with specialistStatus in approved/pending/rescheduled`);
+    if (referrals.length > 0) {
+      console.log('[PG Overview] Sample referrals:');
+      referrals.slice(0, 3).forEach((ref, idx) => {
+        console.log(`  ${idx + 1}. Patient: ${ref.patientId}, AssignedPG: ${ref.assignedPgId}, Department: ${ref.referredDepartment}`);
+      });
+    }
 
     const referralPatientIds = Array.from(
       new Set(
@@ -1196,6 +1232,8 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
           .filter(Boolean)
       )
     );
+
+    console.log(`[PG Overview] Referral patients count: ${referralPatientIds.length}`);
 
     const caseSources = [
       { model: PedodonticsCase, department: 'Pedodontics', bucket: 'pedodontics' },
@@ -1363,10 +1401,104 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       }
     });
 
+    // 🔥 Fetch actual appointment bookings for these patients
+    // Query by patient IDs from referrals - simplest and most reliable
+    const appointmentModule = await import('../models/AppoitmentBooked.js');
+    const Appointment = appointmentModule.Appointment;
+
+    const appointmentScopeQuery = {
+      $or: [
+        ...(referralPatientIds.length ? [{ patientId: { $in: referralPatientIds } }] : []),
+        { assignedPgUgId: { $in: pgQueryKeys } },
+        { assigned_pg_ug_id: { $in: pgQueryKeys } },
+        { pgDoctorId: { $in: pgQueryKeys } },
+        { doctorId: { $in: pgQueryKeys } },
+      ],
+    };
+
+    const actualAppointments = await Appointment.find(appointmentScopeQuery)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    fs.appendFileSync('debug-pg-appointments.log', `Found ${actualAppointments.length} appointments for ${referralPatientIds.length} patients\n`);
+    
+    // Add appointment patients into the set so they are included in the PatientDetails lookup
+    actualAppointments.forEach((appt) => {
+      if (appt.patientId) uniquePatientIds.add(String(appt.patientId));
+    });
+
+    // Build TWO lookups:
+    // 1. By patientId only (most reliable for matching)
+    // 2. By patientId::pgIdentity (for appointments that have PG assignment)
+    const appointmentLookup = new Map();
+    const appointmentsByPatient = new Map();
+    
+    actualAppointments.forEach((appt) => {
+      const patientId = String(appt.patientId || '').trim();
+      if (!patientId) return;
+      
+      // Always add to patient-only lookup (use most recent appointment per patient)
+      if (!appointmentsByPatient.has(patientId)) {
+        appointmentsByPatient.set(patientId, appt);
+      }
+      
+      // Also add to PG-specific lookup if PG is assigned
+      const pgId =
+        String(appt.assignedPgUgId || '').trim() ||
+        String(appt.assigned_pg_ug_id || '').trim() ||
+        String(appt.pgDoctorId || '').trim() ||
+        String(appt.doctorId || '').trim() ||
+        '';
+      
+      if (pgId) {
+        const key = `${patientId}::${pgId}`;
+        if (!appointmentLookup.has(key)) {
+          appointmentLookup.set(key, appt);
+        }
+      }
+    });
+
+    fs.appendFileSync('debug-pg-appointments.log', `Lookup map size: ${appointmentLookup.size}, Fallback size: ${appointmentsByPatient.size}\n`);
+    if (appointmentLookup.size > 0) {
+      const keys = Array.from(appointmentLookup.keys()).slice(0, 3);
+      fs.appendFileSync('debug-pg-appointments.log', `Sample lookup keys: ${keys.join(', ')}\n`);
+    }
+    if (appointmentsByPatient.size > 0) {
+      const keys = Array.from(appointmentsByPatient.keys()).slice(0, 3);
+      fs.appendFileSync('debug-pg-appointments.log', `Fallback patient IDs: ${keys.join(', ')}\n`);
+    }
+    
+    fs.appendFileSync('debug-pg-appointments.log', `Found ${referrals.length} referrals\n`);
+    if (referrals.length > 0) {
+      referrals.slice(0, 2).forEach((ref, idx) => {
+        fs.appendFileSync('debug-pg-appointments.log', `  Referral ${idx + 1}: Patient ${ref.patientId}, PG ${ref.assignedPgId}\n`);
+      });
+    }
+    
+    console.log(`[PG Overview] Built appointment lookup with ${appointmentLookup.size} entries`);
+    console.log(`[PG Overview] Built fallback patient lookup with ${appointmentsByPatient.size} entries`);
+    if (appointmentLookup.size > 0) {
+      const sampleKeys = Array.from(appointmentLookup.keys()).slice(0, 5);
+      console.log('[PG Overview] Sample lookup keys (format: patientId::pgIdentity):', sampleKeys);
+    }
+    if (appointmentsByPatient.size > 0) {
+      const samplePatients = Array.from(appointmentsByPatient.keys()).slice(0, 5);
+      console.log('[PG Overview] Sample fallback patient IDs:', samplePatients);
+    }
+    
+    console.log(`[PG Overview] Found ${referrals.length} referrals with specialistStatus in approved/pending/rescheduled`);
+
     const patientDetails = uniquePatientIds.size
       ? await PatientDetails.find(
           { patientId: { $in: Array.from(uniquePatientIds) } },
-          { patientId: 1, personalInfo: 1, medicalInfo: 1 }
+          {
+            patientId: 1,
+            'personalInfo.firstName': 1,
+            'personalInfo.middleName': 1,
+            'personalInfo.lastName': 1,
+            'personalInfo.gender': 1,
+            'medicalInfo.chiefComplaint': 1,
+          }
         ).lean()
       : [];
 
@@ -1376,6 +1508,14 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
         {
           gender: p.personalInfo?.gender || null,
           chiefComplaint: String(p.medicalInfo?.chiefComplaint || '').trim(),
+          name: [
+            p.personalInfo?.firstName,
+            p.personalInfo?.middleName,
+            p.personalInfo?.lastName,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim(),
         },
       ])
     );
@@ -1418,82 +1558,92 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     });
 
     const enrichedAppointments = [];
+    // Track which patientId::pgIdentity keys have been added (to avoid duplicates from appointment-only pass)
+    const addedKeys = new Set();
+
     assignedPGs.forEach((pg) => {
       const pgKey = String(pg._id);
-      const appointments = scheduledByPG.get(pgKey) || [];
+      const referralEntries = scheduledByPG.get(pgKey) || [];
 
-      appointments.forEach((appt) => {
+      referralEntries.forEach((appt) => {
         const patientInfo = patientMap.get(String(appt.patientId || ''));
+        const resolvedName = patientInfo?.name || String(appt.patientName || '').trim() || '-';
+
+        // Look up appointment by patient ID (most reliable since PG fields may not be set correctly)
+        let booking = appointmentsByPatient.get(String(appt.patientId).trim());
+        
+        if (!booking) {
+          // Fallback: try PG-specific lookup
+          const lookupKey = `${String(appt.patientId || '').trim()}::${String(pg.Identity || '').trim()}`;
+          booking = appointmentLookup.get(lookupKey);
+        }
+
+        if (!booking && appt.patientId) {
+          console.log(`[PG Overview] ❌ No booking found - Patient: ${appt.patientId}, PG: ${pg.Identity}`);
+        } else if (booking) {
+          console.log(`[PG Overview] ✅ Booking found - Patient: ${appt.patientId}, Booking: ${booking.bookingId}, Date: ${booking.appointmentDate}`);
+        }
+
+        addedKeys.add(String(appt.patientId).trim());
+
         enrichedAppointments.push({
           ...appt,
           chiefComplaint: String(appt.chiefComplaint || patientInfo?.chiefComplaint || '').trim(),
+          patientName: resolvedName,
           pgName: pg.name,
           pgIdentity: pg.Identity,
           pgDepartment: pg.department,
+          // Appointment booking fields — populated from actual Appointment doc if found
+          bookingId: booking?.bookingId || '',
+          appointmentDate: booking?.appointmentDate || '',
+          appointmentTime: booking?.appointmentTime || '',
+          appointmentStatus: booking?.status || '',
         });
       });
     });
 
-    // 🔥 FIX: Also fetch actual appointment bookings assigned to these PGs
-    const appointmentModule = await import('../models/AppoitmentBooked.js');
-    const Appointment = appointmentModule.Appointment;
-    
-    const actualAppointments = await Appointment.find({
-      $or: [
-        { doctorId: { $in: pgQueryKeys } },
-        { assigned_pg_ug_id: { $in: pgQueryKeys } },
-        { pgDoctorId: { $in: pgQueryKeys } },
-      ],
-      status: { $in: ['assigned', 'in_progress', 'rescheduled'] },
-    })
-      .sort({ appointmentDate: 1, appointmentTime: 1 })
-      .lean();
-
-    // Merge appointment bookings with case referrals
+    // Second pass: add appointment-only rows (patients with a booking but no referral entry)
     actualAppointments.forEach((appt) => {
-      const pgIdentity = appt.assigned_pg_ug_id || appt.pgDoctorId || appt.doctorId;
-      const pg = assignedPGs.find(p => String(p.Identity).trim() === String(pgIdentity).trim());
-      
-      if (pg) {
-        // Check if this appointment is already in enrichedAppointments (from referral)
-        const existingIndex = enrichedAppointments.findIndex(
-          ea => String(ea.patientId).trim() === String(appt.patientId).trim()
-        );
-        
-        if (existingIndex === -1) {
-          // Add new appointment entry
-          const patientInfo = patientMap.get(String(appt.patientId || ''));
-          enrichedAppointments.push({
-            referralId: appt._id,
-            patientId: appt.patientId,
-            patientName: appt.patientName || '-',
-            referredDepartment: '',
-            chiefComplaint: String(appt.chiefComplaint || patientInfo?.chiefComplaint || '').trim(),
-            status: 'pending',
-            statusTag: '',
-            resendReason: '',
-            hasCaseSheet: false,
-            hasPrescription: false,
-            caseId: '',
-            caseDepartment: '',
-            chiefApproval: '',
-            assignedAt: appt.createdAt,
-            pgName: pg.name,
-            pgIdentity: pg.Identity,
-            pgDepartment: pg.department,
-            bookingId: appt.bookingId,
-            appointmentDate: appt.appointmentDate,
-            appointmentTime: appt.appointmentTime,
-            appointmentStatus: appt.status,
-          });
-        } else {
-          // Update existing entry with appointment details
-          enrichedAppointments[existingIndex].bookingId = appt.bookingId;
-          enrichedAppointments[existingIndex].appointmentDate = appt.appointmentDate;
-          enrichedAppointments[existingIndex].appointmentTime = appt.appointmentTime;
-          enrichedAppointments[existingIndex].appointmentStatus = appt.status;
-        }
-      }
+      const pgId =
+        String(appt.assignedPgUgId || '').trim() ||
+        String(appt.assigned_pg_ug_id || '').trim() ||
+        String(appt.pgDoctorId || '').trim() ||
+        String(appt.doctorId || '').trim() ||
+        '';
+      if (!pgId) return;
+
+      const lookupKey = `${String(appt.patientId || '').trim()}::${pgId}`;
+      if (addedKeys.has(lookupKey)) return; // Already covered by a referral entry
+
+      const pg = assignedPGs.find((p) => String(p.Identity).trim() === pgId);
+      if (!pg) return;
+
+      const patientInfo = patientMap.get(String(appt.patientId || ''));
+      addedKeys.add(lookupKey);
+
+      enrichedAppointments.push({
+        referralId: appt._id,
+        patientId: appt.patientId,
+        patientName: patientInfo?.name || '-',
+        referredDepartment: '',
+        chiefComplaint: String(appt.chiefComplaint || patientInfo?.chiefComplaint || '').trim(),
+        status: 'pending',
+        statusTag: '',
+        resendReason: '',
+        hasCaseSheet: false,
+        hasPrescription: false,
+        caseId: '',
+        caseDepartment: '',
+        chiefApproval: '',
+        assignedAt: appt.createdAt,
+        pgName: pg.name,
+        pgIdentity: pg.Identity,
+        pgDepartment: pg.department,
+        bookingId: appt.bookingId,
+        appointmentDate: appt.appointmentDate,
+        appointmentTime: appt.appointmentTime,
+        appointmentStatus: appt.status,
+      });
     });
 
     res.json({

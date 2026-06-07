@@ -1337,7 +1337,9 @@ const Prescription = () => {
     const cleanup = () => {
       try {
         document.body.classList.remove('show-print-preview');
-      } catch (err) {}
+      } catch (err) {
+        console.error('Error removing print preview class:', err);
+      }
       window.removeEventListener('afterprint', cleanup);
     };
 
@@ -1375,7 +1377,7 @@ const Prescription = () => {
     }
 
     // Reveal the print layout so it renders correctly
-    try { document.body.classList.add('show-print-preview'); } catch (e) {}
+    try { document.body.classList.add('show-print-preview'); } catch (e) { /* ignore */ }
 
     // small delay to allow styles to apply
     await new Promise(r => setTimeout(r, 220));
@@ -1383,7 +1385,7 @@ const Prescription = () => {
     const el = document.querySelector('.print-page');
     if (!el) {
       alert('Printable area not found.');
-      try { document.body.classList.remove('show-print-preview'); } catch (e) {}
+      try { document.body.classList.remove('show-print-preview'); } catch (e) { /* ignore */ }
       return;
     }
 
@@ -1466,7 +1468,7 @@ const Prescription = () => {
       alert('Failed to generate PDF. Falling back to print preview.');
       printPrescription();
     } finally {
-      try { document.body.classList.remove('show-print-preview'); } catch (e) {}
+      try { document.body.classList.remove('show-print-preview'); } catch (e) { /* ignore */ }
     }
   };
 

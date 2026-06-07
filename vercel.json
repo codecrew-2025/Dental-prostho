@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm install --prefix server && npm install --prefix client --include=dev && npm run build --prefix client",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": "client/dist",
   "rewrites": [
     {

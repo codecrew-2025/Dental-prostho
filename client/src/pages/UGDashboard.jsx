@@ -912,17 +912,6 @@ const UGDashboard = () => {
     );
   };
 
-  const getCaseRouteForDepartment = (departmentValue) => {
-    const departmentKey = normalizeDepartment(departmentValue);
-
-    if (departmentKey.includes('publichealthdentistry') || departmentKey.includes('publichealth') || departmentKey.includes('communitydentistry')) return '/general-case-sheet';
-    if (departmentKey === 'pedodontics') return '/pedodontics';
-    if (departmentKey === 'periodontics') return '/casePortal?dept=periodontics';
-    if (departmentKey.includes('oral') || departmentKey.includes('maxillofacial')) return '/casePortal?dept=oral';
-    if (departmentKey.includes('conservative') || departmentKey.includes('endodontic')) return '/casePortal';
-    if (departmentKey === 'general' || departmentKey === 'generaldentistry') return '/general-case-sheet';
-    return '/casePortal?dept=prosthodontics';
-  };
   const handleLogout = () => {
     logout(); 
   };
@@ -2314,7 +2303,6 @@ const UGDashboard = () => {
                   </div>
                 )}
 
-<<<<<<< HEAD
                 {/* General Case Sheet Preview — not shown for PHD doctors */}
                 {showUserIdDisplay && !isPublicHealthDentistry && (
                   <div className="general-case-preview-section" style={{ margin: '16px 0', padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -2365,9 +2353,6 @@ const UGDashboard = () => {
                     </div>
                   </div>
                 )}
-=======
-
->>>>>>> b9290f39ded440f4a943168e9e7c930ce26f6408
 
                 {/* Form Section */}
                 {showForm && (
@@ -2979,7 +2964,6 @@ const UGDashboard = () => {
                           <th style={{ padding: '6px 6px', textAlign: 'center' }}>Patient ID</th>
                           <th style={{ padding: '6px 6px', textAlign: 'center' }}>Date & Time</th>
                           <th style={{ padding: '6px 6px', textAlign: 'center' }}>Complaint</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Status</th>
                           <th style={{ padding: '6px 6px', textAlign: 'center' }}>Action</th>
                         </tr>
                       </thead>
@@ -3029,44 +3013,6 @@ const UGDashboard = () => {
                                 {formatAppointmentComplaintDisplay(appointment?.chiefComplaint) || '—'}
                               </td>
                               <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {/* 🔥 FIX: Show confirmation status */}
-                                {isConfirmed ? (
-                                  <span style={{ 
-                                    background: '#48bb78', 
-                                    color: '#fff', 
-                                    borderRadius: '12px', 
-                                    padding: '3px 10px', 
-                                    fontSize: '12px', 
-                                    fontWeight: 600,
-                                    display: 'inline-block'
-                                  }}>
-                                    ✓ Confirmed
-                                  </span>
-                                ) : (
-                                  <span style={{ 
-                                    background: '#ed8936', 
-                                    color: '#fff', 
-                                    borderRadius: '12px', 
-                                    padding: '3px 10px', 
-                                    fontSize: '12px', 
-                                    fontWeight: 600,
-                                    display: 'inline-block'
-                                  }}>
-                                    ⏳ Pending
-                                  </span>
-                                )}
-                              </td>
-                              <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {hasPendingReschedule ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ background: '#ed8936', color: '#fff', borderRadius: '12px', padding: '3px 10px', fontSize: '12px', fontWeight: 600 }}>
-                                      ⏳ Pending Approval
-                                    </span>
-                                    <span style={{ fontSize: '11px', color: '#888' }}>
-                                      {appointment?.rescheduleRequest?.requestedDate} {appointment?.rescheduleRequest?.requestedTime}
-                                    </span>
-                                  </div>
-                                ) : (
                                   <div style={{ display: 'inline-flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center', alignItems: 'center' }}>
                                     <button
                                       type="button"
@@ -3074,32 +3020,31 @@ const UGDashboard = () => {
                                       onClick={() => approveAppointment(appointment)}
                                       disabled={!canConfirmAppointment || isSubmitting}
                                       style={{
+                                        backgroundColor: '#4CAF50',
+                                        cursor: isSubmitting || !canConfirmAppointment ? 'not-allowed' : 'pointer',
                                         padding: '4px 6px',
                                         fontSize: '0.75em',
-                                        minWidth: '78px',
+                                        minWidth: '70px',
                                         whiteSpace: 'nowrap',
                                       }}
                                     >
-                                      {isSubmitting ? 'Saving...' : 'Confirm appointment'}
+                                      {isSubmitting ? 'Saving...' : 'Approve'}
                                     </button>
                                     <button
                                       type="button"
                                       className="view-button"
                                       onClick={() => beginRescheduleForAppointment(appointment)}
                                       disabled={isSubmitting || !canRescheduleAppointment}
-                                      title={hasPendingReschedule ? 'A reschedule request is already pending approval' : ''}
                                       style={{
                                         padding: '4px 6px',
                                         fontSize: '0.75em',
                                         minWidth: '78px',
                                         whiteSpace: 'nowrap',
-                                        opacity: hasPendingReschedule ? 0.5 : 1,
                                       }}
                                     >
-                                        {isSubmitting ? 'Saving...' : 'Request reschedule'}
+                                        {isSubmitting ? 'Saving...' : 'Reschedule'}
                                     </button>
                                   </div>
-                                )}
                               </td>
                             </tr>
                           );

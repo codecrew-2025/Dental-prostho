@@ -507,7 +507,7 @@ const ConservativeCaseSheet = () => {
       let patientId = readPatientId();
       const start = Date.now();
       while (!patientId && Date.now() - start < 5000 && !cancelled) {
-        // eslint-disable-next-line no-await-in-loop
+         
         await new Promise(r => setTimeout(r, 300));
         patientId = readPatientId();
       }

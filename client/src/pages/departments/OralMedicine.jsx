@@ -188,7 +188,7 @@ const OralMedicine = () => {
 
   useEffect(() => {
     if (patientName) setForm(prev => ({ ...prev, patientName }));
-  }, [patientName]); // eslint-disable-line
+  }, [patientName]);  
 
   useEffect(() => {
     let isMounted = true;
