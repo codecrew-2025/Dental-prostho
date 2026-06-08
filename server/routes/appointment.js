@@ -424,6 +424,18 @@ const attachPatientName = async (appointments) => {
     })
   );
 
+  // Fetch latest GeneralCase chiefComplaint for patients as an extra fallback
+  const GeneralCaseForAttach = (await import('../models/GeneralCase.js')).default;
+  const generalCasesForPatients = patientIds.length
+    ? await GeneralCaseForAttach.find({ patientId: { $in: patientIds } }, { patientId: 1, chiefComplaint: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean()
+    : [];
+  const latestCaseByPatientForAttach = new Map();
+  generalCasesForPatients.forEach(gc => {
+    const pid = String(gc.patientId || '').trim();
+    if (!pid) return;
+    if (!latestCaseByPatientForAttach.has(pid)) latestCaseByPatientForAttach.set(pid, String(gc.chiefComplaint || '').trim());
+  });
+
   const doctorMap = {};
   doctors.forEach((d) => {
     doctorMap[String(d._id)] = d.name || d.Identity || String(d._id);
@@ -437,11 +449,24 @@ const attachPatientName = async (appointments) => {
     const patientId = String(appointment?.patientId || '').trim();
     const profile = patientProfileMap.get(patientId);
 
+    const computedChief = String(appointment?.chiefComplaint || profile?.chiefComplaint || latestCaseByPatientForAttach.get(patientId) || '').trim();
+    if (patientId === '2603017') {
+      console.log('Debug attachPatientName for 2603017:', {
+        rawAppointmentChief: appointment?.chiefComplaint,
+        profileChief: profile?.chiefComplaint,
+        fallbackCaseChief: latestCaseByPatientForAttach.get(patientId),
+        computedChief,
+      });
+    }
+
     return {
       ...appointment,
       patientName: profile?.patientName || map[patientId] || patientId,
-      chiefComplaint: String(appointment?.chiefComplaint || profile?.chiefComplaint || '').trim(),
+      chiefComplaint: computedChief,
       doctorName: appointment?.doctorId ? (doctorMap[String(appointment.doctorId)] || null) : null,
+      // Normalize assignment identity fields so downstream callers can rely on `assignedPgId`
+      assignedPgId: String(appointment?.assigned_pg_ug_id || appointment?.assignedPgUgId || appointment?.assignedPgId || appointment?.pgDoctorId || appointment?.doctorId || '').trim() || null,
+      assignedPgName: null,
     };
   });
 };
@@ -670,39 +695,61 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
     const excludedStatuses = ['cancelled', 'completed', 'closed'];
     
     if (isSupervisor) {
-      // 🔥 FIX: Doctors see appointments for patients assigned to their PG/UG students
+      // Doctors see appointments for patients assigned to their PG/UG students.
+      // Note: `GeneralCase.assignedPgId` may be stored as either the student's `Identity` (string)
+      // or the student's Mongo `_id` (ObjectId). Query for both formats and normalize mappings
+      // so supervisors reliably see newly created appointments.
       const students = await User.find(
         { createdBy: req.user._id, role: { $in: ['pg', 'ug'] } },
         { Identity: 1, name: 1 }
       ).lean();
-      
-      const pgIdentities = students.map(s => String(s.Identity || '').trim()).filter(Boolean);
-      
-      if (!pgIdentities.length) {
+
+      const pgIdentityStrings = students.map(s => String(s.Identity || '').trim()).filter(Boolean);
+      const pgObjectIds = students.map(s => s._id).filter(Boolean);
+
+      if (!pgIdentityStrings.length && !pgObjectIds.length) {
         return res.json({ success: true, appointments: [] });
       }
 
-      // Get all patient IDs assigned to these PG/UG students
+      // Query for GeneralCase entries matching either assignedPgId formats.
       const GeneralCase = (await import('../models/GeneralCase.js')).default;
       const assignedCases = await GeneralCase.find(
-        { assignedPgId: { $in: pgIdentities }, specialistStatus: 'approved' },
+        {
+          $and: [
+            { specialistStatus: 'approved' },
+            {
+              $or: [
+                ...(pgIdentityStrings.length ? [{ assignedPgId: { $in: pgIdentityStrings } }] : []),
+                ...(pgObjectIds.length ? [{ assignedPgId: { $in: pgObjectIds } }] : []),
+              ],
+            },
+          ],
+        },
         { patientId: 1, assignedPgId: 1 }
       ).lean();
 
+      const studentMapByIdentity = new Map(students.map(s => [String(s.Identity || '').trim(), s]));
+
+      // Build mapping patientId -> canonical PG Identity (always use Identity string when possible)
       const patientIdToPgMap = new Map();
       assignedCases.forEach(c => {
         const pid = String(c.patientId || '').trim();
-        const pgId = String(c.assignedPgId || '').trim();
-        if (pid && pgId) {
-          patientIdToPgMap.set(pid, pgId);
-        }
+        if (!pid) return;
+
+        let rawPg = c.assignedPgId;
+        let pgKey = '';
+        if (rawPg == null) return;
+        if (typeof rawPg === 'object' && rawPg.toString) pgKey = String(rawPg.toString()).trim();
+        else pgKey = String(rawPg).trim();
+
+        // Prefer canonical Identity from the student record, but fall back to stored value
+        const student = studentMapByIdentity.get(pgKey) || students.find(s => String(s._id) === pgKey);
+        const canonicalIdentity = student ? String(student.Identity || '').trim() : pgKey;
+        if (canonicalIdentity) patientIdToPgMap.set(pid, canonicalIdentity);
       });
 
       const assignedPatientIds = Array.from(patientIdToPgMap.keys());
-
-      if (!assignedPatientIds.length) {
-        return res.json({ success: true, appointments: [] });
-      }
+      if (!assignedPatientIds.length) return res.json({ success: true, appointments: [] });
 
       // Fetch appointments for these patients
       const appointments = await Appointment.find({
@@ -713,16 +760,27 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
 
       // Enrich with patient names and PG info
       const enriched = await attachPatientName(appointments);
-      
-      // Add PG information to each appointment
-      const studentMap = new Map(students.map(s => [String(s.Identity).trim(), s]));
+
+      // Attempt to fill missing chiefComplaint from latest GeneralCase for the patient
+      const generalCases = await GeneralCase.find({ patientId: { $in: assignedPatientIds } }, { patientId: 1, chiefComplaint: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean();
+      const latestCaseByPatient = new Map();
+      generalCases.forEach(gc => {
+        const pid = String(gc.patientId || '').trim();
+        if (!pid) return;
+        if (!latestCaseByPatient.has(pid)) latestCaseByPatient.set(pid, String(gc.chiefComplaint || '').trim());
+      });
+
+      // Add PG information to each appointment using canonical Identity and fallback chiefComplaint
       const enrichedWithPg = enriched.map(appt => {
-        const pgId = patientIdToPgMap.get(String(appt.patientId));
-        const student = pgId ? studentMap.get(pgId) : null;
+        const pid = String(appt.patientId || '').trim();
+        const pgIdentity = patientIdToPgMap.get(pid) || null;
+        const student = pgIdentity ? studentMapByIdentity.get(pgIdentity) : null;
+        const complaint = String(appt.chiefComplaint || '').trim() || latestCaseByPatient.get(pid) || null;
         return {
           ...appt,
-          assignedPgId: pgId || null,
+          assignedPgId: pgIdentity,
           assignedPgName: student?.name || null,
+          chiefComplaint: complaint || '',
         };
       });
 
@@ -737,7 +795,13 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
       // Get all patient IDs assigned to this PG/UG from GeneralCase
       const GeneralCase = (await import('../models/GeneralCase.js')).default;
       const assignedCases = await GeneralCase.find(
-        { assignedPgId: pgIdentity, specialistStatus: 'approved' },
+        {
+          specialistStatus: 'approved',
+          $or: [
+            { assignedPgId: pgIdentity },
+            { assignedPgId: req.user._id },
+          ],
+        },
         { patientId: 1 }
       ).lean();
 
@@ -758,6 +822,95 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
       }).sort({ appointmentDate: 1, appointmentTime: 1 });
 
       const enriched = await attachPatientName(appointments);
+
+      // Fill missing chiefComplaint from latest GeneralCase where possible
+      const generalCases2 = assignedPatientIds.length
+        ? await GeneralCase.find({ patientId: { $in: assignedPatientIds } }, { patientId: 1, chiefComplaint: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean()
+        : [];
+      const latestCaseByPatient2 = new Map();
+      generalCases2.forEach(gc => {
+        const pid = String(gc.patientId || '').trim();
+        if (!pid) return;
+        if (!latestCaseByPatient2.has(pid)) latestCaseByPatient2.set(pid, String(gc.chiefComplaint || '').trim());
+      });
+
+      // Debug: show fallback mapping for specific patient
+      if (latestCaseByPatient2.has('2603017')) {
+        console.log('PG branch fallback for 2603017:', latestCaseByPatient2.get('2603017'));
+      } else {
+        console.log('PG branch: no GeneralCase fallback for 2603017');
+      }
+
+      // Targeted fallback: for appointments assigned directly to this PG and missing chiefComplaint,
+      // fetch the latest GeneralCase per patient and fill the chiefComplaint
+      const patientsAssignedToThisPgMissing = Array.from(new Set(
+        enriched
+          .filter(a => (String(a.assignedPgUgId || a.assigned_pg_ug_id || '').trim() === pgIdentity) && !String(a.chiefComplaint || '').trim())
+          .map(a => String(a.patientId || '').trim())
+          .filter(Boolean)
+      ));
+
+      if (patientsAssignedToThisPgMissing.length) {
+        const casesForMissing = await GeneralCase.find({ patientId: { $in: patientsAssignedToThisPgMissing } }, { patientId: 1, chiefComplaint: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean();
+        const fallbackMap = new Map();
+        casesForMissing.forEach(gc => {
+          const pid = String(gc.patientId || '').trim();
+          if (!pid) return;
+          if (!fallbackMap.has(pid)) fallbackMap.set(pid, String(gc.chiefComplaint || '').trim());
+        });
+
+        enriched.forEach((appt) => {
+          const pid = String(appt.patientId || '').trim();
+          if (fallbackMap.has(pid) && (!String(appt.chiefComplaint || '').trim())) {
+            appt.chiefComplaint = fallbackMap.get(pid) || '';
+          }
+        });
+      }
+
+      // Populate assignedPgId and assignedPgName for returned appointments
+      const assignedKeys = new Set();
+      enriched.forEach(a => {
+        const candidate = String(a.assigned_pg_ug_id || a.assignedPgUgId || a.assignedPgUgId || a.pgDoctorId || a.assignedPgId || a.doctorId || '').trim();
+        if (candidate) assignedKeys.add(candidate);
+        const pid = String(a.patientId || '').trim();
+        const gcAssigned = latestCaseByPatient2.get(pid) || null;
+        if (gcAssigned) assignedKeys.add(gcAssigned);
+      });
+
+      const identityKeys = Array.from(assignedKeys).filter(k => k && !isValidObjectIdString(k));
+      const objectIdKeys = Array.from(assignedKeys).filter(k => isValidObjectIdString(k)).map(k => k);
+
+      const userQuery = [];
+      if (identityKeys.length) userQuery.push({ Identity: { $in: identityKeys } });
+      if (objectIdKeys.length) userQuery.push({ _id: { $in: objectIdKeys } });
+
+      const assignedMap = new Map(); // key -> name
+      if (userQuery.length) {
+        const usersFound = await User.find({ $or: userQuery }, { _id: 1, name: 1, Identity: 1 }).lean();
+        usersFound.forEach(u => {
+          if (u.Identity) assignedMap.set(String(u.Identity).trim(), u.name || null);
+          if (u._id) assignedMap.set(String(u._id), u.name || null);
+        });
+      }
+
+      // Apply mapping to each appointment
+      enriched.forEach(a => {
+        const pid = String(a.patientId || '').trim();
+        const fromAppt = String(a.assigned_pg_ug_id || a.assignedPgUgId || a.assignedPgId || a.pgDoctorId || a.doctorId || '').trim();
+        const gcAssigned = latestCaseByPatient2.get(pid) || null;
+        const finalAssigned = fromAppt || gcAssigned || '';
+        a.assignedPgId = finalAssigned || '';
+        a.assignedPgName = assignedMap.get(finalAssigned) || null;
+      });
+
+      // Debug: print enriched test appointment before sending
+      try {
+        const sampleTest = enriched.find(e => e.bookingId === 'TEST-1780828338824');
+        console.log('PG response enriched test appointment:', sampleTest);
+      } catch (e) {
+        // ignore
+      }
+
       res.json({ success: true, appointments: enriched });
     }
   } catch (err) {
