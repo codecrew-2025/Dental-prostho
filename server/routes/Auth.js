@@ -1110,8 +1110,13 @@ router.get('/doctor/assigned-pgs', auth, requireRole(['doctor']), async (req, re
 
 // Get overview of assigned PGs with analytics
 router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async (req, res) => {
-  const fs = await import('fs');
-  fs.appendFileSync('debug-pg-appointments.log', `\n\n========================================\n[${new Date().toISOString()}] Endpoint called\n`);
+  // Use safe logging: try to append to a debug file, but fall back to console.log
+  try {
+    const fs = await import('fs');
+    fs.appendFileSync('debug-pg-appointments.log', `\n\n========================================\n[${new Date().toISOString()}] Endpoint called\n`);
+  } catch (logErr) {
+    console.log('[PG Overview DEBUG] Endpoint called', new Date().toISOString(), logErr?.message || '');
+  }
   
   try {
     const { PatientDetails } = await import('../models/patientDetails.js');
@@ -1169,8 +1174,13 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     const doctorIdentity = String(req.user?.Identity || '').trim();
     
     // First, find all referrals where this doctor is the specialist doctor
+    // Match by either the doctor's Identity string or their _id (ObjectId/string)
     const doctorReferrals = await GeneralCase.find({
-      specialistDoctorId: doctorIdentity,
+      $or: [
+        { specialistDoctorId: doctorIdentity },
+        { specialistDoctorId: req.user._id },
+        { specialistDoctorId: String(req.user._id) },
+      ],
       specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
     }, { assignedPgId: 1 }).lean();
     
@@ -1202,7 +1212,7 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     }
 
     // Query appointments by BOTH PG _id and Identity formats
-    const pgQueryKeys = Array.from(
+    const pgIdentityKeys = Array.from(
       new Set(
         assignedPGs
           .map((pg) => (pg.Identity ? String(pg.Identity).trim() : null))
@@ -1210,8 +1220,23 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       )
     );
 
+    const pgIdKeys = Array.from(
+      new Set(
+        assignedPGs
+          .map((pg) => (pg._id ? String(pg._id) : null))
+          .filter(Boolean)
+      )
+    );
+
+    // Also include the actual ObjectId values if present on the assignedPGs array
+    const pgObjectIds = assignedPGs.map((pg) => pg._id).filter(Boolean);
+
     const referrals = await GeneralCase.find({ 
-      assignedPgId: { $in: pgQueryKeys },  // Show all cases assigned to PGs under this doctor
+      $or: [
+        { assignedPgId: { $in: pgIdentityKeys } },
+        { assignedPgId: { $in: pgIdKeys } },
+        { assignedPgId: { $in: pgObjectIds } },
+      ], // Show all cases assigned to PGs under this doctor (match Identity or _id)
       specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
     })
       .sort({ pgAssignedAt: -1, createdAt: -1 })
@@ -1420,7 +1445,12 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       .sort({ createdAt: -1 })
       .lean();
 
-    fs.appendFileSync('debug-pg-appointments.log', `Found ${actualAppointments.length} appointments for ${referralPatientIds.length} patients\n`);
+    try {
+      const fs = await import('fs');
+      fs.appendFileSync('debug-pg-appointments.log', `Found ${actualAppointments.length} appointments for ${referralPatientIds.length} patients\n`);
+    } catch (logErr) {
+      console.log('[PG Overview DEBUG] Found', actualAppointments.length, 'appointments for', referralPatientIds.length, 'patients');
+    }
     
     // Add appointment patients into the set so they are included in the PatientDetails lookup
     actualAppointments.forEach((appt) => {
@@ -1458,21 +1488,28 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       }
     });
 
-    fs.appendFileSync('debug-pg-appointments.log', `Lookup map size: ${appointmentLookup.size}, Fallback size: ${appointmentsByPatient.size}\n`);
-    if (appointmentLookup.size > 0) {
-      const keys = Array.from(appointmentLookup.keys()).slice(0, 3);
-      fs.appendFileSync('debug-pg-appointments.log', `Sample lookup keys: ${keys.join(', ')}\n`);
-    }
-    if (appointmentsByPatient.size > 0) {
-      const keys = Array.from(appointmentsByPatient.keys()).slice(0, 3);
-      fs.appendFileSync('debug-pg-appointments.log', `Fallback patient IDs: ${keys.join(', ')}\n`);
-    }
-    
-    fs.appendFileSync('debug-pg-appointments.log', `Found ${referrals.length} referrals\n`);
-    if (referrals.length > 0) {
-      referrals.slice(0, 2).forEach((ref, idx) => {
-        fs.appendFileSync('debug-pg-appointments.log', `  Referral ${idx + 1}: Patient ${ref.patientId}, PG ${ref.assignedPgId}\n`);
-      });
+    try {
+      const fs = await import('fs');
+      fs.appendFileSync('debug-pg-appointments.log', `Lookup map size: ${appointmentLookup.size}, Fallback size: ${appointmentsByPatient.size}\n`);
+      if (appointmentLookup.size > 0) {
+        const keys = Array.from(appointmentLookup.keys()).slice(0, 3);
+        fs.appendFileSync('debug-pg-appointments.log', `Sample lookup keys: ${keys.join(', ')}\n`);
+      }
+      if (appointmentsByPatient.size > 0) {
+        const keys = Array.from(appointmentsByPatient.keys()).slice(0, 3);
+        fs.appendFileSync('debug-pg-appointments.log', `Fallback patient IDs: ${keys.join(', ')}\n`);
+      }
+      fs.appendFileSync('debug-pg-appointments.log', `Found ${referrals.length} referrals\n`);
+      if (referrals.length > 0) {
+        referrals.slice(0, 2).forEach((ref, idx) => {
+          fs.appendFileSync('debug-pg-appointments.log', `  Referral ${idx + 1}: Patient ${ref.patientId}, PG ${ref.assignedPgId}\n`);
+        });
+      }
+    } catch (logErr) {
+      console.log('[PG Overview DEBUG] Lookup map size:', appointmentLookup.size, 'Fallback size:', appointmentsByPatient.size);
+      if (appointmentLookup.size > 0) console.log('[PG Overview DEBUG] Sample lookup keys:', Array.from(appointmentLookup.keys()).slice(0,3));
+      if (appointmentsByPatient.size > 0) console.log('[PG Overview DEBUG] Fallback patient IDs:', Array.from(appointmentsByPatient.keys()).slice(0,3));
+      console.log('[PG Overview DEBUG] Found referrals:', referrals.length);
     }
     
     console.log(`[PG Overview] Built appointment lookup with ${appointmentLookup.size} entries`);
