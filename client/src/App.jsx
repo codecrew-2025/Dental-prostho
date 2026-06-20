@@ -329,7 +329,6 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute
               allowedRoles={['doctor', 'chief', 'chief-doctor', 'pg', 'ug']}
-              allowedDepartments={['general', 'generaldentistry', 'oral', 'oralandmaxillofacial', 'oralandmaxillofacialsurgery', 'oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology']}
             >
               <OralMedicine />
             </ProtectedRoute>

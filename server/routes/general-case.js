@@ -145,7 +145,7 @@ const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
 
 const pickPgForDoctor = async (doctor) => {
   const students = await User.find(
-    { role: { $in: ['pg', 'ug'] }, createdBy: doctor._id },
+    { role: { $in: ['pg', 'ug'] }, department: doctor.department },
     { _id: 1, name: 1, Identity: 1, department: 1, role: 1 }
   ).lean();
 
@@ -154,7 +154,7 @@ const pickPgForDoctor = async (doctor) => {
     return null;
   }
 
-  const startIndex = await getNextRoundRobinStartIndex(`pgReferral:${String(doctor._id)}`, eligibleStudents.length);
+  const startIndex = await getNextRoundRobinStartIndex(`pgReferral:${String(doctor.department)}`, eligibleStudents.length);
   return eligibleStudents[startIndex];
 };
 
@@ -467,8 +467,11 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
       chiefApproval: ''
     });
 
+    let assignedPg = null;
+
     if (!publicHealthCase) {
-      const { assignedPg } = await assignReferralToPg(generalCase, specialistDoctor);
+      const result = await assignReferralToPg(generalCase, specialistDoctor);
+      assignedPg = result.assignedPg;
       if (!assignedPg?._id) {
         return res.status(409).json({
           success: false,
@@ -497,17 +500,17 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
       if (recentAppointment) {
         recentAppointment.status = 'assigned'; // ASSIGNED - case sheet submitted, PG assigned
         recentAppointment.isProcessed = true;
-        recentAppointment.doctorId = assignedPg.Identity || assignedPg._id; // Set PG as doctorId
-        recentAppointment.assignedPgUgId = assignedPg.Identity || '';
-        recentAppointment.assigned_pg_ug_id = assignedPg.Identity || ''; // Set PG assignment
-        recentAppointment.pgDoctorId = assignedPg.Identity || ''; // Alternative field
+        recentAppointment.doctorId = assignedPg?.Identity || assignedPg?._id || ''; // Set PG as doctorId
+        recentAppointment.assignedPgUgId = assignedPg?.Identity || '';
+        recentAppointment.assigned_pg_ug_id = assignedPg?.Identity || ''; // Set PG assignment
+        recentAppointment.pgDoctorId = assignedPg?.Identity || ''; // Alternative field
         recentAppointment.supervisingDeptDoctorId = specialistDoctor?.Identity || '';
         recentAppointment.supervising_dept_doctor_id = specialistDoctor?.Identity || ''; // Set dept doctor
         recentAppointment.deptDoctorId = specialistDoctor?.Identity || ''; // Alternative field
         recentAppointment.generalDoctorId = req.user.Identity || ''; // Set general doctor ID
         await recentAppointment.save();
         console.log(`✅ Marked appointment ${recentAppointment.bookingId} as ASSIGNED for patient ${patientId}`);
-        console.log(`✅ Assigned PG ${assignedPg.Identity} and Dept Doctor ${specialistDoctor?.Identity} to appointment`);
+        console.log(`✅ Assigned PG ${assignedPg?.Identity} and Dept Doctor ${specialistDoctor?.Identity} to appointment`);
       }
     } catch (appointmentError) {
       console.error('⚠️ Failed to mark appointment as assigned:', appointmentError);
@@ -749,11 +752,16 @@ router.get('/assigned-pg-cases', auth, requireRole(['pg', 'ug']), async (req, re
   try {
     const pgIdentity = String(req.user?.Identity || '').trim();
 
+    const rawIdentity = String(req.user?.Identity || '');
+
     await autoTransferPendingReferralsToPgQueue();
 
     // 🔥 FIX: Include BOTH 'approved' AND 'pending' status to show newly assigned cases immediately
     const cases = await GeneralCase.find({
-      assignedPgId: pgIdentity,
+      $or: [
+        { assignedPgId: pgIdentity },
+        { assignedPgId: rawIdentity },
+      ],
       specialistStatus: { $in: ['approved', 'pending'] },
     })
       .sort({ pgAssignedAt: -1, createdAt: -1 })

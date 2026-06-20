@@ -12,5 +12,17 @@ export default defineConfig({
       protocol: 'ws',
       port: 5173,
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2', 'recharts'],
+          'pdf-vendor': ['jspdf', 'html2canvas', 'xlsx', 'exceljs'],
+          'ui-vendor': ['lucide-react', 'react-icons']
+        }
+      }
+    }
   }
 })

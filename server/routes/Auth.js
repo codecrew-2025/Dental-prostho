@@ -13,6 +13,18 @@ import requireRole from '../middleware/role.js';
 dotenv.config();
 const router = Router();
 
+router.get('/debug/case2606009', async (req, res) => {
+  try {
+    const GeneralCase = (await import('../models/GeneralCase.js')).default;
+    const User = (await import('../models/User.js')).default;
+    const cases = await GeneralCase.find({ patientId: '2606009' }).lean();
+    const doctors = await User.find({ role: 'doctor', department: /Prostho/i }).lean();
+    res.json({ cases, doctors });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 const findUserByIdentifier = async (identifier) => {
   const normalizedIdentifier = String(identifier || '').trim();
   const escapedIdentifier = normalizedIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1172,12 +1184,14 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     // Get all PGs that have referrals supervised by this doctor (either created by them OR in their department)
     const doctorDepartment = String(req.user?.department || '').trim();
     const doctorIdentity = String(req.user?.Identity || '').trim();
+    const rawDoctorIdentity = String(req.user?.Identity || '');
     
     // First, find all referrals where this doctor is the specialist doctor
     // Match by either the doctor's Identity string or their _id (ObjectId/string)
     const doctorReferrals = await GeneralCase.find({
       $or: [
         { specialistDoctorId: doctorIdentity },
+        { specialistDoctorId: rawDoctorIdentity },
         { specialistDoctorId: req.user._id },
         { specialistDoctorId: String(req.user._id) },
       ],
@@ -1187,6 +1201,9 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     const pgIdentitiesFromReferrals = [...new Set(
       doctorReferrals.map(r => String(r.assignedPgId || '').trim()).filter(Boolean)
     )];
+    const pgRawIdentitiesFromReferrals = [...new Set(
+      doctorReferrals.map(r => String(r.assignedPgId || '')).filter(Boolean)
+    )];
     
     // Get PGs either created by this doctor OR assigned cases under this doctor
     const assignedPGs = await User.find(
@@ -1194,7 +1211,8 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
         role: 'pg',
         $or: [
           { createdBy: req.user._id },
-          { Identity: { $in: pgIdentitiesFromReferrals } }
+          { Identity: { $in: pgIdentitiesFromReferrals } },
+          { Identity: { $in: pgRawIdentitiesFromReferrals } }
         ]
       },
       { _id: 1, name: 1, Identity: 1, email: 1, phone: 1, department: 1, createdAt: 1 }
@@ -1231,12 +1249,18 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     // Also include the actual ObjectId values if present on the assignedPGs array
     const pgObjectIds = assignedPGs.map((pg) => pg._id).filter(Boolean);
 
+    const pgQueryKeys = [...new Set([...pgIdentityKeys, ...pgIdKeys])];
+
     const referrals = await GeneralCase.find({ 
       $or: [
         { assignedPgId: { $in: pgIdentityKeys } },
         { assignedPgId: { $in: pgIdKeys } },
         { assignedPgId: { $in: pgObjectIds } },
-      ], // Show all cases assigned to PGs under this doctor (match Identity or _id)
+        { specialistDoctorId: doctorIdentity },
+        { specialistDoctorId: rawDoctorIdentity },
+        { specialistDoctorId: req.user._id },
+        { specialistDoctorId: String(req.user._id) },
+      ], // Show all cases assigned to PGs under this doctor or assigned to this doctor
       specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
     })
       .sort({ pgAssignedAt: -1, createdAt: -1 })
@@ -1639,6 +1663,54 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       });
     });
 
+    // Catch-all: If a referral was escalated to THIS doctor, but the assigned PG couldn't be matched
+    // (e.g. PG created by someone else, or identity mismatch), STILL show it in the dashboard!
+    referrals.forEach((referral) => {
+      const patientId = String(referral.patientId || '').trim();
+      const pgIdentity = String(referral.assignedPgId || '').trim();
+      const lookupKey = `${patientId}::${pgIdentity}`;
+      
+      if (!patientId || addedKeys.has(lookupKey)) return;
+
+      const patientInfo = patientMap.get(patientId);
+      const resolvedName = patientInfo?.name || String(referral.patientName || '').trim() || '-';
+
+      let booking = appointmentsByPatient.get(patientId);
+
+      enrichedAppointments.push({
+        referralId: referral._id,
+        patientId,
+        patientName: resolvedName,
+        referredDepartment: referral.referredDepartment || referral.selectedDepartments?.[0] || '',
+        chiefComplaint: String(referral.chiefComplaint || patientInfo?.chiefComplaint || '').trim(),
+        status: referral.specialistStatus || 'pending',
+        statusTag: '',
+        resendReason: '',
+        hasCaseSheet: false,
+        hasPrescription: false,
+        caseId: '',
+        caseDepartment: '',
+        chiefApproval: '',
+        assignedAt: referral.pgAssignedAt || referral.specialistReviewedAt || referral.createdAt,
+        pgName: pgIdentity ? `PG: ${pgIdentity}` : 'Unassigned',
+        pgIdentity: pgIdentity || '',
+        pgDepartment: referral.referredDepartment || '',
+        bookingId: booking?.bookingId || '',
+        appointmentDate: booking?.appointmentDate || '',
+        appointmentTime: booking?.appointmentTime || '',
+        appointmentStatus: booking?.status || '',
+      });
+      
+      addedKeys.add(lookupKey);
+    });
+
+    // Sort the final enriched array by assignedAt / appointmentDate
+    enrichedAppointments.sort((a, b) => {
+      const dateA = a.appointmentDate ? new Date(a.appointmentDate) : new Date(a.assignedAt || 0);
+      const dateB = b.appointmentDate ? new Date(b.appointmentDate) : new Date(b.assignedAt || 0);
+      return dateB - dateA;
+    });
+
     // Second pass: add appointment-only rows (patients with a booking but no referral entry)
     actualAppointments.forEach((appt) => {
       const pgId =
@@ -1689,9 +1761,13 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
       appointments: enrichedAppointments,
       analytics,
     });
-  } catch (err) {
-    console.error('Error fetching PG overview:', err);
-    res.status(500).json({ success: false, message: 'Failed to fetch PG overview' });
+  } catch (error) {
+    console.error('[Assigned PGs Overview] Error:', error);
+    try {
+      const fs = await import('fs');
+      fs.appendFileSync('debug-pg-appointments.log', `[ERROR] ${error.message}\n${error.stack}\n`);
+    } catch(e) {}
+    res.status(500).json({ success: false, message: 'Failed to fetch PG overview', error: error.message });
   }
 });
 

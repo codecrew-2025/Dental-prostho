@@ -28,7 +28,7 @@
   color: #ffffff;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   box-sizing: border-box;
 }
 

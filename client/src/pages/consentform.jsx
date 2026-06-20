@@ -1,6 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from "../config/api";
+import { saveConsentDraft, loadConsentDraft, clearConsentDraft } from '../utils/consentDraft';
+
+const debounce = (fn, delay) => {
+  let timer;
+  const debounced = (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+  debounced.cancel = () => clearTimeout(timer);
+  return debounced;
+};
 
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 const campusBg = '/images/campus.png';
@@ -56,6 +67,7 @@ const App = () => {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [permissionError, setPermissionError] = useState("");
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
   const patientId =
     localStorage.getItem("CurrentpatientId") ||
     localStorage.getItem("patientId") ||
@@ -153,6 +165,85 @@ const App = () => {
       }
     };
   }, [recordedVideoURL]);
+
+  // Load draft on mount/patientId change
+  useEffect(() => {
+    if (!patientId) {
+      setIsDraftLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDraft = async () => {
+      try {
+        const draft = await loadConsentDraft({ patientId });
+        if (cancelled || !draft?.data) {
+          setIsDraftLoaded(true);
+          return;
+        }
+
+        const d = draft.data;
+
+        if (d.formData) {
+          setFormData(prev => ({
+            ...prev,
+            patientName: d.formData.patientName || prev.patientName,
+            date: d.formData.date || prev.date,
+            agreed: d.formData.agreed || prev.agreed,
+            signatureImage: d.formData.signatureImage || prev.signatureImage,
+          }));
+        }
+
+        if (d.recordedVideoURL) setRecordedVideoURL(d.recordedVideoURL);
+        if (d.recordedVideoData) setRecordedVideoData(d.recordedVideoData);
+        if (d.permissionGranted) setPermissionGranted(d.permissionGranted);
+
+        console.log('[ConsentForm] Draft loaded for patient:', patientId);
+      } catch (error) {
+        console.error('[ConsentForm] Failed to load draft:', error);
+      } finally {
+        setIsDraftLoaded(true);
+      }
+    };
+
+    loadDraft();
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  // Debounced save draft
+  const saveDraftDebounced = useMemo(
+    () => debounce(async () => {
+      if (!patientId || !isDraftLoaded) return;
+
+      const draftData = {
+        formData: {
+          patientName: formData.patientName,
+          date: formData.date,
+          agreed: formData.agreed,
+          signatureImage: formData.signatureImage,
+        },
+        recordedVideoURL,
+        recordedVideoData,
+        permissionGranted,
+      };
+
+      await saveConsentDraft({ patientId, data: draftData });
+    }, 2000),
+    [patientId, isDraftLoaded, formData, recordedVideoURL, recordedVideoData, permissionGranted]
+  );
+
+  useEffect(() => {
+    if (!isDraftLoaded) return;
+    saveDraftDebounced();
+  }, [formData, recordedVideoURL, recordedVideoData, permissionGranted, isDraftLoaded, saveDraftDebounced]);
+
+  // Cancel debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (saveDraftDebounced?.cancel) saveDraftDebounced.cancel();
+    };
+  }, [saveDraftDebounced]);
 
   const blobToDataURL = (blob) =>
     new Promise((resolve, reject) => {
@@ -381,6 +472,12 @@ const App = () => {
       }
 
       setSubmitted(true);
+      try {
+        await clearConsentDraft({ patientId });
+        console.log('[ConsentForm] Draft cleared after successful submission');
+      } catch (error) {
+        console.error('[ConsentForm] Failed to clear draft:', error);
+      }
     } catch (error) {
       console.error("Consent submission failed:", error);
       setSubmitError("Consent submission failed. Please check your network and try again.");

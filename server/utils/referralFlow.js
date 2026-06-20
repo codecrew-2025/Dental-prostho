@@ -99,14 +99,14 @@ const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
 
 const pickPgForDoctor = async (doctor) => {
   const students = await User.find(
-    { role: { $in: ['pg', 'ug'] }, createdBy: doctor._id },
+    { role: { $in: ['pg', 'ug'] }, department: doctor.department },
     { _id: 1, name: 1, Identity: 1, department: 1, role: 1 }
   ).lean();
 
   const eligibleStudents = sortUsersForAssignment(students);
   if (!eligibleStudents.length) return null;
 
-  const startIndex = await getNextRoundRobinStartIndex(`pgReferral:${String(doctor._id)}`, eligibleStudents.length);
+  const startIndex = await getNextRoundRobinStartIndex(`pgReferral:${String(doctor.department)}`, eligibleStudents.length);
   return eligibleStudents[startIndex];
 };
 

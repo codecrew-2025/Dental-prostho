@@ -155,6 +155,7 @@ const DoctorDashboard = () => {
 
   const [analyticsFromDate, setAnalyticsFromDate] = useState(formatDateInput(new Date()));
   const [analyticsToDate, setAnalyticsToDate] = useState(formatDateInput(new Date()));
+  const [analyticsSearchName, setAnalyticsSearchName] = useState('');
   const [doctorPgAnalyticsReport, setDoctorPgAnalyticsReport] = useState(null);
   const [doctorPgAnalyticsLoading, setDoctorPgAnalyticsLoading] = useState(false);
   const [doctorPgAnalyticsError, setDoctorPgAnalyticsError] = useState('');
@@ -712,13 +713,20 @@ const DoctorDashboard = () => {
     const patientId = getStoredPatientId();
     const resumeTarget = patientId ? await getPatientResumeTarget(patientId) : null;
 
-    // If there is an unfinished draft for this patient, resume — but still request consent.
-    if (resumeTarget?.routeKey) {
-      navigate(resumeTarget.routeKey, { state: { requestConsentAfterEntry: true } });
+    // Only resume a draft if it belongs to THIS doctor's department route.
+    // Prevents oral/general doctors from being re-routed to a stale
+    // draft saved under a different department's case-sheet path.
+    const resumeRouteKey = String(resumeTarget?.routeKey || '').trim();
+    const resumeMatchesDept =
+      resumeRouteKey &&
+      resumeRouteKey.split('?')[0] === route.split('?')[0];
+
+    if (resumeMatchesDept) {
+      navigate(resumeRouteKey, { state: { requestConsentAfterEntry: true } });
       return;
     }
 
-    // Fresh case entry: request consent before department case sheet.
+    // Fresh case entry (or draft from a different department): go to this doctor's case sheet.
     navigate(route, { state: { requestConsentAfterEntry: true } });
   };
 
@@ -1371,13 +1379,18 @@ const DoctorDashboard = () => {
   const handleRejectReschedule = async () => {
     const bookingId = rejectReasonBookingId;
     if (!bookingId) return;
+    const reason = String(rejectReasonText || '').trim();
+    if (!reason) {
+      alert('Please provide a reason for rejection.');
+      return;
+    }
     try {
       setRescheduleActionLoadingId(bookingId);
       const token = user?.token || localStorage.getItem('token');
       const res = await fetch(buildApiUrl(`/api/appointment/${encodeURIComponent(bookingId)}/reschedule/reject`), {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: rejectReasonText }),
+        body: JSON.stringify({ reason }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.message || 'Failed to reject');
@@ -2056,6 +2069,16 @@ const DoctorDashboard = () => {
     day: '2-digit',
   });
 
+  const filteredAnalyticsPgs = (() => {
+    if (!doctorPgAnalyticsReport?.pgs) return [];
+    if (!analyticsSearchName.trim()) return doctorPgAnalyticsReport.pgs;
+    const query = analyticsSearchName.toLowerCase().trim();
+    return doctorPgAnalyticsReport.pgs.filter(pg => 
+      (pg.pgName && pg.pgName.toLowerCase().includes(query)) ||
+      (pg.pgIdentity && pg.pgIdentity.toLowerCase().includes(query))
+    );
+  })();
+
   return (
     <div className="chief-layout">
       <header className="chief-topbar">
@@ -2425,9 +2448,9 @@ const DoctorDashboard = () => {
                     <tr>
                         <th>S.No</th>
                       <th>Name</th>
-                      <th>Number</th>
-                      <th>Mail</th>
-                      <th>PG ID</th>
+                      <th>Phone Number</th>
+                      <th>Mail ID</th>
+                      <th>Register Number</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -2497,9 +2520,9 @@ const DoctorDashboard = () => {
                     <tr>
                       <th>S.No</th>
                       <th>Name</th>
-                      <th>Number</th>
-                      <th>Mail</th>
-                      <th>UG ID</th>
+                      <th>Phone Number</th>
+                      <th>Mail ID</th>
+                      <th>Register Number</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -2694,6 +2717,7 @@ const DoctorDashboard = () => {
                         <th>Requested By</th>
                         <th>Current Appointment</th>
                         <th>Requested New Time</th>
+                        <th>Reason</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -2717,6 +2741,9 @@ const DoctorDashboard = () => {
                             <td style={{ color: '#2b6cb0', fontWeight: 600 }}>
                               <div>{formatDisplayDate(req.rescheduleRequest?.requestedDate)}</div>
                               <div style={{ fontSize: '12px' }}>{req.rescheduleRequest?.requestedTime || '—'}</div>
+                            </td>
+                            <td style={{ maxWidth: '200px', wordBreak: 'break-word' }}>
+                              {req.rescheduleRequest?.reason || '—'}
                             </td>
                             <td>
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
@@ -2759,12 +2786,12 @@ const DoctorDashboard = () => {
                     width: '100%', maxWidth: '460px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
                   }}>
                     <h3 style={{ marginBottom: '12px', fontSize: '18px' }}>Reject Reschedule Request</h3>
-                    <p style={{ color: '#555', fontSize: '14px', marginBottom: '16px' }}>
-                      Optionally provide a reason. The patient will be notified by email.
+                    <p style={{ color: '#c53030', fontSize: '14px', marginBottom: '16px', fontWeight: 600 }}>
+                      Provide a reason for rejection (required). The PG/UG and patient will be notified.
                     </p>
                     <textarea
                       rows={3}
-                      placeholder="Reason for rejection (optional)..."
+                      placeholder="Reason for rejection (required)..."
                       value={rejectReasonText}
                       onChange={(e) => setRejectReasonText(e.target.value)}
                       style={{
@@ -2783,9 +2810,9 @@ const DoctorDashboard = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={rescheduleActionLoadingId === rejectReasonBookingId}
+                        disabled={rescheduleActionLoadingId === rejectReasonBookingId || !String(rejectReasonText || '').trim()}
                         onClick={handleRejectReschedule}
-                        style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#e53e3e', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                        style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#e53e3e', color: '#fff', cursor: !String(rejectReasonText || '').trim() ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: !String(rejectReasonText || '').trim() ? 0.6 : 1 }}
                       >
                         {rescheduleActionLoadingId === rejectReasonBookingId ? 'Rejecting...' : 'Confirm Reject'}
                       </button>
@@ -2927,6 +2954,17 @@ const DoctorDashboard = () => {
                     onChange={(e) => setAnalyticsToDate(e.target.value)}
                   />
                 </div>
+
+                <div className="chief-analytics-control">
+                  <label>PG or Doctor Name</label>
+                  <input
+                    className="chief-select"
+                    type="text"
+                    placeholder="Search PG or Doctor name..."
+                    value={analyticsSearchName}
+                    onChange={(e) => setAnalyticsSearchName(e.target.value)}
+                  />
+                </div>
               </div>
 
               {doctorPgAnalyticsError && <div className="error-message">{doctorPgAnalyticsError}</div>}
@@ -2935,8 +2973,8 @@ const DoctorDashboard = () => {
                 <div className="chief-inline-loading">Loading reports...</div>
               ) : !doctorPgAnalyticsReport || !Array.isArray(doctorPgAnalyticsReport.pgs) ? (
                 <div className="chief-empty-state">Select a date range and click View.</div>
-              ) : doctorPgAnalyticsReport.pgs.length === 0 ? (
-                <div className="chief-empty-state">No report data available for assigned students.</div>
+              ) : filteredAnalyticsPgs.length === 0 ? (
+                <div className="chief-empty-state">No report data available for assigned students matching your search.</div>
               ) : (
                 <>
                   <div className="chief-summary-grid" style={{ marginBottom: 16 }}>
@@ -2969,7 +3007,7 @@ const DoctorDashboard = () => {
                       <ResponsiveContainer width="100%" height={300}>
                         <PieChart>
                           <Pie
-                            data={doctorPgAnalyticsReport.pgs.map((d) => ({
+                            data={filteredAnalyticsPgs.map((d) => ({
                               name: d.pgName || d.pgIdentity,
                               value: d.uniquePatients || 0,
                             }))}
@@ -2980,7 +3018,7 @@ const DoctorDashboard = () => {
                             outerRadius={80}
                             label={(entry) => `${entry.name}: ${entry.value}`}
                           >
-                            {doctorPgAnalyticsReport.pgs.map((_, index) => (
+                            {filteredAnalyticsPgs.map((_, index) => (
                               <Cell key={`cell-${index}`} fill={`hsl(${index * 137.5}, 70%, 50%)`} />
                             ))}
                           </Pie>
@@ -2999,14 +3037,14 @@ const DoctorDashboard = () => {
                             data={[
                               {
                                 name: 'Male',
-                                value: doctorPgAnalyticsReport.pgs.reduce(
+                                value: filteredAnalyticsPgs.reduce(
                                   (sum, d) => sum + (d.malePatients || 0),
                                   0
                                 ),
                               },
                               {
                                 name: 'Female',
-                                value: doctorPgAnalyticsReport.pgs.reduce(
+                                value: filteredAnalyticsPgs.reduce(
                                   (sum, d) => sum + (d.femalePatients || 0),
                                   0
                                 ),
@@ -3037,14 +3075,14 @@ const DoctorDashboard = () => {
                             data={[
                               {
                                 name: 'New Patients',
-                                value: doctorPgAnalyticsReport.pgs.reduce(
+                                value: filteredAnalyticsPgs.reduce(
                                   (sum, d) => sum + (d.newPatients || 0),
                                   0
                                 ),
                               },
                               {
                                 name: 'Old Patients',
-                                value: doctorPgAnalyticsReport.pgs.reduce(
+                                value: filteredAnalyticsPgs.reduce(
                                   (sum, d) => sum + (d.oldPatients || 0),
                                   0
                                 ),
@@ -3084,7 +3122,7 @@ const DoctorDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {doctorPgAnalyticsReport.pgs.map((row, index) => (
+                      {filteredAnalyticsPgs.map((row, index) => (
                         <tr key={row.pgIdentity}>
                           <td>{index + 1}</td>
                           <td>{row.pgName || row.pgIdentity}</td>

@@ -350,14 +350,16 @@ const OralMedicine = () => {
 
   const handleNext = () => {
     if (currentPage < TOTAL_PAGES - 1) setCurrentPage(p => p + 1);
-    else handleSubmit('dashboard');
+    else handleSubmit('prescription');
   };
 
   const handlePrev = () => {
     if (currentPage > 0) setCurrentPage(p => p - 1);
   };
 
-  const handleSubmit = async (redirectTo = 'dashboard') => {
+  const handleSubmit = async (eOrRedirectTo) => {
+    const isEvent = eOrRedirectTo && typeof eOrRedirectTo === 'object' && eOrRedirectTo.nativeEvent;
+    const redirectTo = isEvent ? 'prescription' : (eOrRedirectTo || 'prescription');
     if (!validate()) { showToast('Please fill required fields.', 'error'); return; }
     if (!patientId) { showToast('No patient loaded.', 'error'); return; }
     if (!doctorId) { showToast('Doctor identity not found. Please log in again.', 'error'); return; }
@@ -565,6 +567,16 @@ const OralMedicine = () => {
         )}
       </div>
       <h2 className="omr-sheet-title" style={{ marginTop: 8 }}>ORAL MEDICINE AND RADIOLOGY</h2>
+      <div style={{ marginBottom: '16px' }}>
+        <p className="omr-section-title" style={{ marginTop: 0, marginBottom: '6px' }}>DOCTOR NAME:</p>
+        <input 
+          className="omr-uinput" 
+          type="text" 
+          value={doctorName || '—'} 
+          readOnly 
+          style={{ cursor: 'not-allowed', background: 'rgba(255,255,255,0.05)', color: '#9ca3af' }} 
+        />
+      </div>
       <p className="omr-section-title">CHIEF COMPLAINT:</p>
       {ta('chiefComplaint', 4, true)}
       {errors.chiefComplaint && <p className="omr-error">{errors.chiefComplaint}</p>}
@@ -663,18 +675,18 @@ const OralMedicine = () => {
     </div>
   );
 
-  /* ── PAGE 6 — Examination of Lesion (PDF Page 7) ── */
+  /* ── PAGE 6 — Examination of Lesion + Summary (PDF Page 7) ── */
   const renderPage6 = () => (
     <div className="omr-page-content">
       <h2 className="omr-sheet-title">ORAL MEDICINE AND RADIOLOGY</h2>
       <p className="omr-subsection-title">Examination of Lesion</p>
       <p className="omr-item-label">A. Inspection:</p>{ta('lesionInspection', 6)}
       <p className="omr-item-label">B. Palpation:</p>{ta('lesionPalpation', 6)}
-      <p className="omr-item-label">Summary:</p>{ta('summary', 5)}
+      <p className="omr-item-label" style={{ marginTop: 24 }}>Summary:</p>{ta('summary', 5)}
     </div>
   );
 
-  /* ── PAGE 7 — Diagnosis + Investigation + Treatment + Signature (PDF Page 8) ── */
+  /* ── PAGE 7 — AI Recommendations + Diagnosis + Investigation + Treatment + Signature (PDF Page 8) ── */
   const renderPage7 = () => (
     <div className="omr-page-content">
       <h2 className="omr-sheet-title">ORAL MEDICINE AND RADIOLOGY</h2>
@@ -684,16 +696,16 @@ const OralMedicine = () => {
         <h3 style={{ margin: '0 0 12px', color: '#a5b4fc', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>🤖</span> AI Clinical Recommendations
         </h3>
-        
+
         {clinicalIssues.length > 0 ? (
           <div style={{ display: 'grid', gap: '12px' }}>
             <div>
               <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Detected Issues:</strong>
               <ul style={{ margin: '4px 0 0', paddingLeft: '20px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                {clinicalIssues.map((issue, idx) => <li key={idx}>{issue}</li>)}
+                {clinicalIssues.map((issue, idx) => <li key={idx}>{issue.name}</li>)}
               </ul>
             </div>
-            
+
             {recommendedInvestigations.length > 0 && (
               <div>
                 <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Suggested Investigations:</strong>
@@ -733,6 +745,7 @@ const OralMedicine = () => {
         )}
       </div>
       {/* --- End AI Recommendations Section --- */}
+
       <p className="omr-section-title">Provisional Diagnosis:</p>{ta('provisionalDiagnosis', 3)}
       <p className="omr-section-title">Differential Diagnosis:</p>{ta('differentialDiagnosis', 3)}
       <p className="omr-section-title">Investigation:</p>
@@ -761,7 +774,8 @@ const OralMedicine = () => {
         ))}
       </div>
       <p className="omr-section-title">Clinical Diagnosis:</p>{ta('clinicalDiagnosis', 3)}
-      <p className="omr-section-title">Treatment planning:</p>{ta('treatmentPlan', 4)}
+
+      <p className="omr-section-title" style={{ marginTop: 24 }}>Treatment planning:</p>{ta('treatmentPlan', 4)}
       <p className="omr-section-title">Prognosis:</p>{ta('prognosis', 3)}
 
       <p className="omr-section-title" style={{ marginTop: 24 }}>CHARGEABLE INVESTIGATIONS:</p>
@@ -796,6 +810,7 @@ const OralMedicine = () => {
           {ta('chargeDescription', 3)}
         </div>
       </div>
+
       <p className="omr-section-title" style={{ marginTop: 24 }}>Referred to Department (Priority Order):</p>
       <div style={{ maxWidth: 520, marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -877,7 +892,7 @@ const OralMedicine = () => {
         )}
       </div>
 
-      {/* Doctor info below referred department */}
+      {/* Doctor info */}
       <div style={{
         marginTop: 16, padding: '12px 16px',
         background: 'rgba(255,255,255,0.07)',
@@ -918,8 +933,8 @@ const OralMedicine = () => {
     'Hard Tissue Examination',
     'Soft Tissue Examination (a–e)',
     'Soft Tissue Examination (f–i)',
-    'Examination of Lesion',
-    'Diagnosis, Investigation & Treatment',
+    'Examination of Lesion & Summary',
+    'Diagnosis, Treatment & Signature',
   ];
 
   return (
@@ -1014,7 +1029,7 @@ const OralMedicine = () => {
             <button type="button" className="omr-btn-submit" onClick={handleNext}>Next →</button>
           ) : (
             <>
-              <button type="button" className="omr-btn-submit" onClick={handleSubmit} disabled={submitting}>
+              <button type="button" className="omr-btn-submit" onClick={() => handleSubmit('prescription')} disabled={submitting}>
                 {submitting ? 'Submitting...' : 'Submit Case Sheet ✓'}
               </button>
               <button

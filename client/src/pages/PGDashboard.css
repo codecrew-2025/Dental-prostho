@@ -596,7 +596,7 @@
 }
 
 /* My Appointments column sizing (PG dashboard)
-   Columns: S.No, Doctor, Patient Name, Patient ID, Date & Time, Complaint, Action */
+   Columns: S.No, Patient Name, Patient ID, Date & Time, Complaint, Action */
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(1),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(1) {
   width: 5%;
@@ -604,32 +604,27 @@
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(2),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(2) {
-  width: 14%;
+  width: 16%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(3),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(3) {
-  width: 22%;
+  width: 10%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(4),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(4) {
-  width: 9%;
+  width: 18%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(5),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(5) {
-  width: 18%;
+  width: 29%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(6),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(6) {
-  width: 20%;
-}
-
-.pg-my-appointments .pg-assigned-cases-table th:nth-child(7),
-.pg-my-appointments .pg-assigned-cases-table td:nth-child(7) {
-  width: 18%;
+  width: 22%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th,
@@ -637,13 +632,13 @@
   vertical-align: top;
 }
 
-.pg-my-appointments .pg-assigned-cases-table td:nth-child(6) {
+.pg-my-appointments .pg-assigned-cases-table td:nth-child(5) {
   white-space: nowrap;
 }
 
 /* Allow long values to wrap for better readability */
-.pg-my-appointments .pg-assigned-cases-table td:nth-child(4),
-.pg-my-appointments .pg-assigned-cases-table td:nth-child(7) {
+.pg-my-appointments .pg-assigned-cases-table td:nth-child(3),
+.pg-my-appointments .pg-assigned-cases-table td:nth-child(6) {
   white-space: normal;
   word-break: break-word;
 }
@@ -1530,4 +1525,104 @@
 .ug-clinical-ta:focus {
   outline: none;
   border-color: #818cf8;
+}
+
+/* Premium Action Buttons Container */
+.pg-premium-action-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.pg-premium-action-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Premium Badges */
+.pg-premium-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+  text-align: center;
+}
+
+.badge-green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.4));
+  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.badge-blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.4));
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.badge-gray {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.2), rgba(75, 85, 99, 0.4));
+  color: #d1d5db;
+  border-color: rgba(156, 163, 175, 0.4);
+}
+
+.badge-red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.4));
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+/* Premium Buttons */
+.pg-premium-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.pg-premium-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.pg-premium-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.pg-premium-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-approve {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.btn-reschedule {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }

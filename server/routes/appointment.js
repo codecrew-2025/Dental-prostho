@@ -792,13 +792,16 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
         return res.status(400).json({ success: false, message: 'PG Identity not found on account' });
       }
 
+      const rawIdentity = String(req.user?.Identity || '');
+      
       // Get all patient IDs assigned to this PG/UG from GeneralCase
       const GeneralCase = (await import('../models/GeneralCase.js')).default;
       const assignedCases = await GeneralCase.find(
         {
-          specialistStatus: 'approved',
+          specialistStatus: { $in: ['approved', 'pending'] },
           $or: [
             { assignedPgId: pgIdentity },
+            { assignedPgId: rawIdentity },
             { assignedPgId: req.user._id },
           ],
         },
@@ -814,8 +817,11 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
         $or: [
           { patientId: { $in: assignedPatientIds } },
           { doctorId: pgIdentity },
+          { doctorId: rawIdentity },
           { assigned_pg_ug_id: pgIdentity },
+          { assigned_pg_ug_id: rawIdentity },
           { pgDoctorId: pgIdentity },
+          { pgDoctorId: rawIdentity },
         ],
         status: { $nin: excludedStatuses },
         appointmentDate: { $gte: todayStr },
@@ -2107,6 +2113,7 @@ router.put("/:bookingId/reschedule", auth, requireRole(["doctor", "chief-doctor"
         requestedByName: req.user?.name || pgIdentity,
         proposedDate: appointmentDate,
         proposedTime: normalizedAppointmentTime,
+        reason: req.body.reason || '',
         requestStatus: 'pending',
         requestedAt: new Date(),
         reviewedBy: null,
@@ -2410,6 +2417,11 @@ router.get("/reschedule-requests", auth, requireRole(["doctor", "chief-doctor"])
         ...appt,
         requestedByName: student?.name || appt.rescheduleRequest?.requestedByName || '—',
         requestedByRole: student?.role || '—',
+        rescheduleRequest: appt.rescheduleRequest ? {
+          ...appt.rescheduleRequest,
+          requestedDate: appt.rescheduleRequest.proposedDate || null,
+          requestedTime: appt.rescheduleRequest.proposedTime || null,
+        } : null,
       };
     });
 
@@ -2506,7 +2518,7 @@ router.put("/:bookingId/reschedule/approve", auth, requireRole(["doctor", "chief
     // Approve the reschedule
     appointment.appointmentDate = newDate;
     appointment.appointmentTime = newTime;
-    appointment.status = "rescheduled";
+    appointment.status = "pending";
     appointment.rescheduleRequest.requestStatus = "approved";
     appointment.rescheduleRequest.reviewedBy = doctorIdentity;
     appointment.rescheduleRequest.reviewedAt = new Date();
@@ -2659,12 +2671,20 @@ router.put("/:bookingId/reschedule/reject", auth, requireRole(["doctor", "chief-
       });
     }
 
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required",
+      });
+    }
+
     const requestedDate = appointment.rescheduleRequest.proposedDate;
     const requestedTime = appointment.rescheduleRequest.proposedTime;
     const requestedBy = appointment.rescheduleRequest.requestedByName || 'PG';
 
     // Reject the reschedule
     appointment.rescheduleRequest.requestStatus = "rejected";
+    appointment.rescheduleRequest.reason = String(reason).trim();
     appointment.rescheduleRequest.reviewedBy = doctorIdentity;
     appointment.rescheduleRequest.reviewedAt = new Date();
 

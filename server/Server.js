@@ -22,6 +22,8 @@ import generalCaseRoutes from './routes/general-case.js';
 import consentFormRoutes from './routes/consent-form.js';
 import caseDraftRoutes from './routes/case-draft.js';
 import conservativeRoutes from './routes/conservative-route.js';
+import consentDraftRoutes from './routes/consent-draft.js';
+
 
 import prescriptionRoutes from './routes/prescription.js';
 import patientDetailsRoutes from './routes/patient-details-route.js';
@@ -251,6 +253,10 @@ console.log('✓ General Case Sheet routes registered at /api/general');
 
 app.use('/api/case-drafts', caseDraftRoutes);
 console.log('✓ Case draft routes registered at /api/case-drafts');
+
+app.use('/api/consent-drafts', consentDraftRoutes);
+console.log('✓ Consent draft routes registered at /api/consent-drafts');
+
 
 app.use('/api/conservative', conservativeRoutes);
 console.log('✓ Conservative routes registered at /api/conservative');

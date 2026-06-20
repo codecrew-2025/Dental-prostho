@@ -7,6 +7,9 @@ import { PatientDetails } from '../models/patientDetails.js';
 import { User } from '../models/User.js';
 import generateNextPatientId from '../utils/patientIdGenerator.js';
 import { hash } from 'bcryptjs';
+import Appointment from '../models/AppoitmentBooked.js';
+import AssignmentState from '../models/AssignmentState.js';
+
  
 
 const router = express.Router();
@@ -132,6 +135,41 @@ const findLinkedPatientUser = async ({ normalizedId, compactId }) => {
   }
 
   return linkedPatientUser;
+};
+
+const generateBookingId = () => {
+  return "SRMDNT" + Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const GENERAL_DOCTOR_DEPT_KEYS = new Set([
+  'general', 'generaldentistry', 'oral', 'oralmedicine',
+  'oralmedicineandradiology', 'oralmedicineradiology'
+]);
+
+const normalizeDept = (value) => String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '');
+
+const pickDoctorForAutoAppointment = async () => {
+  const doctors = await User.find({ role: 'doctor' }).lean();
+  const generalDoctors = doctors.filter(d => GENERAL_DOCTOR_DEPT_KEYS.has(normalizeDept(d.department)));
+  if (!generalDoctors.length) return null;
+
+  generalDoctors.sort((a, b) => {
+    const aId = (a.Identity || "").toString();
+    const bId = (b.Identity || "").toString();
+    const byIdentity = aId.localeCompare(bId, "en", { numeric: true, sensitivity: "base" });
+    if (byIdentity !== 0) return byIdentity;
+    return String(a._id).localeCompare(String(b._id));
+  });
+
+  const state = await AssignmentState.findOneAndUpdate(
+    { key: 'appointmentRoundRobin' },
+    { $setOnInsert: { key: 'appointmentRoundRobin' }, $inc: { counter: 1 } },
+    { new: true, upsert: true }
+  ).lean();
+
+  const counter = typeof state?.counter === 'number' ? state.counter : 1;
+  const idx = ((counter - 1) % generalDoctors.length + generalDoctors.length) % generalDoctors.length;
+  return generalDoctors[idx];
 };
 
 // GET /api/patient-details/next-id - generate next available patient ID
@@ -354,6 +392,49 @@ router.post('/', async (req, res) => {
     console.log('Patient object before saving:', JSON.stringify(newPatient, null, 2));
     const savedPatient = await newPatient.save();
     console.log('Patient saved successfully:', savedPatient.patientId);
+
+    const chiefComplaint = String(req.body?.medicalInfo?.chiefComplaint || '').trim();
+
+    if (chiefComplaint) {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const assignedDoctor = await pickDoctorForAutoAppointment();
+
+        if (assignedDoctor) {
+          const patientEmail = String(personalInfo?.email || '').trim() || linkedUser?.email || '';
+
+          let bookingCreated = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const bookingId = generateBookingId();
+            try {
+              await Appointment.create({
+                bookingId,
+                patientId: finalPatientId,
+                patientEmail,
+                chiefComplaint,
+                appointmentDate: today,
+                appointmentTime: '9:00 AM',
+                doctorId: String(assignedDoctor._id),
+                status: 'assigned',
+                isProcessed: false,
+                needsGeneralApproval: false,
+                needsPgApproval: false,
+              });
+              bookingCreated = true;
+              break;
+            } catch (createErr) {
+              if (createErr?.code !== 11000 || attempt === 2) throw createErr;
+            }
+          }
+
+          if (bookingCreated) {
+            console.log(`✅ Auto-created appointment for patient ${finalPatientId}`);
+          }
+        }
+      } catch (apptError) {
+        console.error('⚠️ Failed to auto-create appointment:', apptError);
+      }
+    }
 
     res.status(201).json({
       success: true,

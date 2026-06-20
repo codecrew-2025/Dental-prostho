@@ -655,9 +655,15 @@ const PGDashboard = ({ brandTitleOverride }) => {
     // Use calendar-based selection
     const appointmentDate = rescheduleSelectedDate;
     const appointmentTime = String(rescheduleDrafts[resolvedBookingId]?.appointmentTime || '').trim();
+    const reason = String(rescheduleDrafts[resolvedBookingId]?.reason || '').trim();
 
     if (!appointmentDate || !appointmentTime) {
       showMessage('Please select a new appointment date and time.', 'error');
+      return;
+    }
+
+    if (!reason) {
+      showMessage('Please enter a reason for rescheduling.', 'error');
       return;
     }
 
@@ -670,7 +676,7 @@ const PGDashboard = ({ brandTitleOverride }) => {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ appointmentDate, appointmentTime }),
+        body: JSON.stringify({ appointmentDate, appointmentTime, reason }),
       });
 
       if (res.status === 401) {
@@ -886,6 +892,12 @@ const PGDashboard = ({ brandTitleOverride }) => {
       setMessage('');
       setSuccessMessage('');
     }, 5000);
+  };
+
+  const handleShowRejectionReason = (reason) => {
+    setMessageTitle('Reschedule Request Rejected');
+    setMessageContent(reason || 'No reason provided by doctor.');
+    setShowMessageBox(true);
   };
 
   const historyAlertStatus = useMemo(() => {
@@ -2762,16 +2774,15 @@ const PGDashboard = ({ brandTitleOverride }) => {
 
                 {Array.isArray(myUpcomingAppointments) && myUpcomingAppointments.length > 0 && (
                   <div className="pg-assigned-cases-table-wrapper">
-                    <table className="pg-assigned-cases-table" style={{ fontSize: '0.8em', tableLayout: 'fixed', width: '100%' }}>
+                    <table className="pg-assigned-cases-table">
                       <thead>
-                        <tr style={{ padding: '4px' }}>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>S.No</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Doctor</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Patient Name</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Patient ID</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Date & Time</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Complaint</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center' }}>Action</th>
+                        <tr>
+                          <th>S.No</th>
+                          <th>Patient Name</th>
+                          <th>Patient ID</th>
+                          <th>Date & Time</th>
+                          <th>Complaint</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2787,83 +2798,83 @@ const PGDashboard = ({ brandTitleOverride }) => {
 
                           return (
                             <tr key={bookingId || `${appointment?.patientId}-${appointment?.appointmentDate}`} className="pg-assigned-row">
-                              <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>{index + 1}</td>
-                              <td
-                                style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}
-                                title={appointment?.doctorName || appointment?.doctorId || '—'}
-                              >
-                                {appointment?.doctorName || appointment?.doctorId || '—'}
-                              </td>
-                              <td
-                                style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                                title={appointment?.patientName || '—'}
-                              >
+                              <td>{index + 1}</td>
+                              <td title={appointment?.patientName || '—'}>
                                 {appointment?.patientName || '—'}
                               </td>
-                              <td
-                                style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}
-                                title={appointment?.patientId || '—'}
-                              >
+                              <td title={appointment?.patientId || '—'}>
                                 {appointment?.patientId || '—'}
                               </td>
-                              <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {appointment?.appointmentDate || '—'}
-                                {appointment?.appointmentTime ? ` • ${appointment.appointmentTime}` : ''}
-                              </td>
-                              <td
-                                style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                              >
-                                {formatAppointmentComplaintDisplay(appointment?.chiefComplaint) || '—'}
-                              </td>
-                              <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {appointmentStatus === 'rescheduled' && hasApprovedReschedule ? (
-                                  <span style={{ background: '#38a169', color: '#fff', borderRadius: '12px', padding: '3px 10px', fontSize: '12px', fontWeight: 600 }}>
-                                    ✓ Approved
-                                  </span>
-                                ) : appointmentStatus === 'rescheduled' ? (
-                                  <span style={{ background: '#3182ce', color: '#fff', borderRadius: '12px', padding: '3px 10px', fontSize: '12px', fontWeight: 600 }}>
-                                    Rescheduled
-                                  </span>
-                                ) : appointmentStatus === 'confirmed' ? (
-                                  <span style={{ background: '#38a169', color: '#fff', borderRadius: '12px', padding: '3px 10px', fontSize: '12px', fontWeight: 600 }}>
-                                    ✓ Approved
-                                  </span>
-                                ) : (
-                                  <div style={{ display: 'inline-flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center', alignItems: 'center' }}>
-                                    <button
-                                      type="button"
-                                      className="view-button"
-                                      onClick={() => approveAppointment(appointment)}
-                                      disabled={isSubmitting || !canApproveAppointment}
-                                      style={{
-                                        backgroundColor: '#4CAF50',
-                                        cursor: isSubmitting || !canApproveAppointment ? 'not-allowed' : 'pointer',
-                                        padding: '4px 6px',
-                                        fontSize: '0.75em',
-                                        minWidth: '70px',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="view-button"
-                                      onClick={() => beginRescheduleForAppointment(appointment)}
-                                      disabled={isSubmitting || !canRescheduleAppointment}
-                                      title={hasPendingReschedule ? 'A reschedule request is already pending approval' : ''}
-                                      style={{
-                                        padding: '4px 6px',
-                                        fontSize: '0.75em',
-                                        minWidth: '78px',
-                                        whiteSpace: 'nowrap',
-                                        opacity: hasPendingReschedule ? 0.5 : 1,
-                                      }}
-                                    >
-                                      {isSubmitting ? 'Saving...' : 'Reschedule'}
-                                    </button>
+                              <td>
+                                <div>{appointment?.appointmentDate || '—'}</div>
+                                <div>{appointment?.appointmentTime ? ` • ${appointment.appointmentTime}` : ''}</div>
+                                {rescheduleReqStatus === 'approved' && (
+                                  <div style={{ fontSize: '10px', color: '#38a169', fontWeight: 'bold', marginTop: '2px' }}>
+                                    (Rescheduled)
                                   </div>
                                 )}
+                              </td>
+                              <td>
+                                {formatAppointmentComplaintDisplay(appointment?.chiefComplaint) || '—'}
+                              </td>
+                              <td>
+                                <div className="pg-premium-action-cell">
+                                  {appointmentStatus === 'rescheduled' && hasApprovedReschedule ? (
+                                    <span className="pg-premium-badge badge-green">✓ Approved</span>
+                                  ) : appointmentStatus === 'rescheduled' ? (
+                                    <span className="pg-premium-badge badge-blue">Rescheduled</span>
+                                  ) : appointmentStatus === 'confirmed' ? (
+                                    <span className="pg-premium-badge badge-green">✓ Approved</span>
+                                  ) : appointmentStatus === 'reschedule_requested' ? (
+                                    rescheduleReqStatus === 'pending' ? (
+                                      <span className="pg-premium-badge badge-gray">Reschedule Requested</span>
+                                    ) : rescheduleReqStatus === 'rejected' ? (
+                                      <>
+                                        <span
+                                          className="pg-premium-badge badge-red"
+                                          onClick={() => handleShowRejectionReason(appointment?.rescheduleRequest?.reason)}
+                                          title="Click to view rejection reason"
+                                          style={{ cursor: 'pointer' }}
+                                        >
+                                          Reschedule Rejected ℹ
+                                        </span>
+                                        <div className="pg-premium-action-row">
+                                          <button
+                                            type="button"
+                                            className="pg-premium-btn btn-reschedule"
+                                            onClick={() => beginRescheduleForAppointment(appointment)}
+                                            disabled={isSubmitting}
+                                          >
+                                            Reschedule
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="pg-premium-badge badge-gray">
+                                        {appointment?.status || 'Pending'}
+                                      </span>
+                                    )
+                                  ) : (
+                                    <div className="pg-premium-action-row">
+                                      <button
+                                        type="button"
+                                        className="pg-premium-btn btn-approve"
+                                        onClick={() => approveAppointment(appointment)}
+                                        disabled={isSubmitting || !canApproveAppointment}
+                                      >
+                                        {isSubmitting ? '...' : 'Approve'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="pg-premium-btn btn-reschedule"
+                                        onClick={() => beginRescheduleForAppointment(appointment)}
+                                        disabled={isSubmitting || !canRescheduleAppointment}
+                                      >
+                                        Reschedule
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3015,36 +3026,62 @@ const PGDashboard = ({ brandTitleOverride }) => {
                   </p>
                   <div className="pg-slot-section-title">Available Slots</div>
                   {rescheduleAvailableSlots.length > 0 ? (
-                    <div className="pg-reschedule-slot-grid">
-                      {ALLOWED_APPOINTMENT_TIMES.map((timeSlot) => {
-                        const slotInfo = bookedSlotsByDate[rescheduleSelectedDate];
-                        const bookedCount = Number(slotInfo?.bookedSlots?.[timeSlot] || 0);
-                        const maxSlots = Number(slotInfo?.maxSlotsPerTime || 1);
-                        const isBooked = bookedCount >= maxSlots;
-                        const isCurrentSlot = activeRescheduleAppointment?.appointmentTime === timeSlot && activeRescheduleAppointment?.appointmentDate === rescheduleSelectedDate;
-                        const selected = String(rescheduleDrafts[activeRescheduleBookingId]?.appointmentTime || '') === timeSlot;
-                        
-                        return (
-                          <button
-                            key={timeSlot}
-                            type="button"
-                            className={`pg-slot-chip ${selected ? 'selected' : ''}`}
-                            disabled={isBooked && !isCurrentSlot || bookedSlotsLoadingDate === rescheduleSelectedDate}
-                            onClick={() => updateRescheduleDraft(activeRescheduleBookingId, { 
-                              appointmentDate: rescheduleSelectedDate,
-                              appointmentTime: timeSlot 
-                            })}
+                    <>
+                      <div className="pg-reschedule-slot-grid">
+                        {ALLOWED_APPOINTMENT_TIMES.map((timeSlot) => {
+                          const slotInfo = bookedSlotsByDate[rescheduleSelectedDate];
+                          const bookedCount = Number(slotInfo?.bookedSlots?.[timeSlot] || 0);
+                          const maxSlots = Number(slotInfo?.maxSlotsPerTime || 1);
+                          const isBooked = bookedCount >= maxSlots;
+                          const isCurrentSlot = activeRescheduleAppointment?.appointmentTime === timeSlot && activeRescheduleAppointment?.appointmentDate === rescheduleSelectedDate;
+                          const selected = String(rescheduleDrafts[activeRescheduleBookingId]?.appointmentTime || '') === timeSlot;
+                          
+                          return (
+                            <button
+                              key={timeSlot}
+                              type="button"
+                              className={`pg-slot-chip ${selected ? 'selected' : ''}`}
+                              disabled={isBooked && !isCurrentSlot || bookedSlotsLoadingDate === rescheduleSelectedDate}
+                              onClick={() => updateRescheduleDraft(activeRescheduleBookingId, { 
+                                appointmentDate: rescheduleSelectedDate,
+                                appointmentTime: timeSlot 
+                              })}
+                              style={{
+                                opacity: isBooked && !isCurrentSlot ? 0.5 : 1,
+                                cursor: isBooked && !isCurrentSlot ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              {timeSlot}
+                              {isBooked && !isCurrentSlot && <span style={{ fontSize: '10px', display: 'block', marginTop: '4px' }}>Booked</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {rescheduleDrafts[activeRescheduleBookingId]?.appointmentTime && (
+                        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <label style={{ color: 'white', fontWeight: 600, fontSize: '14px', textAlign: 'left' }}>
+                            Reason for Rescheduling <span style={{ color: '#fc8181' }}>*</span>
+                          </label>
+                          <textarea
+                            rows={3}
+                            placeholder="Enter reason for rescheduling (required)..."
+                            value={rescheduleDrafts[activeRescheduleBookingId]?.reason || ''}
+                            onChange={(e) => updateRescheduleDraft(activeRescheduleBookingId, { reason: e.target.value })}
                             style={{
-                              opacity: isBooked && !isCurrentSlot ? 0.5 : 1,
-                              cursor: isBooked && !isCurrentSlot ? 'not-allowed' : 'pointer'
+                              width: '100%',
+                              padding: '10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(255,255,255,0.3)',
+                              backgroundColor: 'rgba(0,0,0,0.2)',
+                              color: 'white',
+                              fontSize: '14px',
+                              resize: 'vertical',
+                              boxSizing: 'border-box',
                             }}
-                          >
-                            {timeSlot}
-                            {isBooked && !isCurrentSlot && <span style={{ fontSize: '10px', display: 'block', marginTop: '4px' }}>Booked</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
+                          />
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="pg-slot-help">No available slots for this date. Please select another date.</div>
                   )}
@@ -3073,7 +3110,8 @@ const PGDashboard = ({ brandTitleOverride }) => {
                 disabled={
                   rescheduleSubmittingBookingId === activeRescheduleBookingId ||
                   !rescheduleSelectedDate ||
-                  !String(rescheduleDrafts[activeRescheduleBookingId]?.appointmentTime || '').trim()
+                  !String(rescheduleDrafts[activeRescheduleBookingId]?.appointmentTime || '').trim() ||
+                  !String(rescheduleDrafts[activeRescheduleBookingId]?.reason || '').trim()
                 }
               >
                 {rescheduleSubmittingBookingId === activeRescheduleBookingId ? 'Saving...' : 'Confirm'}
