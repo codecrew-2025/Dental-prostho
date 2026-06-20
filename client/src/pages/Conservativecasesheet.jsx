@@ -5,6 +5,8 @@ import { useAuth } from './context/AuthContext';
 import './conservativeCaseSheet.css';
 import './Login.css'; // reuse exact login theme
 import SlotBookingModal from "../components/SlotBookingModal";
+import FollowUpAppointment from '../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../utils/appointmentUtils';
 import { API_BASE_URL } from '../config/api';
 
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
@@ -84,9 +86,10 @@ const ConservativeCaseSheet = () => {
   };
   const [patientAllergyData, setPatientAllergyData] = useState({ drug: '', known: '', diet: '' });
   const [treatmentPictures, setTreatmentPictures] = useState([]);
-  // Next visit appointment state (copied from prescription page block)
-  const [nextVisitDate, setNextVisitDate] = useState('');
-  const [nextVisitTime, setNextVisitTime] = useState('');
+  // Next visit appointment state
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
+  
   // expose patientId and patientEmail for modal props
   const patientId = localStorage.getItem('CurrentpatientId') || localStorage.getItem('patientId') || '';
   const patientEmail = localStorage.getItem('patientEmail') || '';
@@ -833,6 +836,11 @@ const ConservativeCaseSheet = () => {
       if (res.ok) {
         const savedCaseId = payload?.caseId || payload?.data?._id || '';
         if (savedCaseId) localStorage.setItem('caseId', savedCaseId);
+        
+        if (followUpDate && followUpTime) {
+          await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+        }
+
         alert(`Case saved successfully. Case ID: ${payload?.caseId || payload?.data?._id || ''}`);
         navigateToPrescriptions();
       } else {
@@ -842,6 +850,11 @@ const ConservativeCaseSheet = () => {
         if (isPgAssignmentWarning) {
           const savedCaseId = payload?.caseId || payload?.data?._id || '';
           if (savedCaseId) localStorage.setItem('caseId', savedCaseId);
+          
+          if (followUpDate && followUpTime) {
+            await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+          }
+
           alert(`Case saved successfully. Case ID: ${payload?.caseId || payload?.data?._id || ''}`);
           navigateToPrescriptions();
           return;
@@ -1211,6 +1224,13 @@ const ConservativeCaseSheet = () => {
               )}
             </div>
           </div>
+
+          <FollowUpAppointment 
+            date={followUpDate} 
+            setDate={setFollowUpDate} 
+            time={followUpTime} 
+            setTime={setFollowUpTime} 
+          />
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 14 }}>
             <button className="button" onClick={handleSave}>Submit Case Sheet</button>

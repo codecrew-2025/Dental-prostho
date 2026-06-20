@@ -6,6 +6,8 @@ import { API_BASE_URL } from '../../../config/api';
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 import { getCurrentPatientId, getSharedXrayImage } from '../../../utils/sharedXray';
 import { clearCaseDraft, loadCaseDraft, saveCaseDraft } from '../../../utils/caseDraft';
+import FollowUpAppointment from '../../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../../utils/appointmentUtils';
 
 const Fpd = () => {
     const DRAFT_ROUTE_KEY = '/Fpd';
@@ -16,6 +18,8 @@ const Fpd = () => {
     const [allergyMessage, setAllergyMessage] = useState('Loading allergies...');
     const [showAllergy, setShowAllergy] = useState(true);
     const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+    const [followUpDate, setFollowUpDate] = useState('');
+    const [followUpTime, setFollowUpTime] = useState('');
     const totalPages = 7; // Pages 0 to 6 for content, Page 7 for signature/submit
     const navigate = useNavigate();
     const location = useLocation();
@@ -256,6 +260,11 @@ const Fpd = () => {
                     if (isRedoEdit) {
                         localStorage.removeItem('redoEditCaseId');
                         localStorage.removeItem('redoEditDepartmentKey');
+                        
+                        if (followUpDate && followUpTime) {
+                            await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+                        }
+
                         alert('Case Sheet updated and resubmitted successfully!');
                         navigate('/pg-dashboard');
                         return;
@@ -263,6 +272,11 @@ const Fpd = () => {
 
                     const newId = data.data && (data.data._id || data.data._doc?._id || data.caseId);
                     if (newId) localStorage.setItem('caseId', newId);
+                    
+                    if (followUpDate && followUpTime) {
+                        await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+                    }
+
                     alert('Case Sheet submitted successfully!');
                     window.location.href = '/prescriptions';
                 } else {
@@ -1170,6 +1184,15 @@ const Fpd = () => {
         </div>
       </div>
                     </div>
+
+                    {isSignaturePage && (
+                        <FollowUpAppointment 
+                            date={followUpDate} 
+                            setDate={setFollowUpDate} 
+                            time={followUpTime} 
+                            setTime={setFollowUpTime} 
+                        />
+                    )}
 
                     {/* Navigation Buttons */}
                     <div className="navigation" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -2201,7 +2201,7 @@ const UGDashboard = () => {
           </aside>
         )}
 
-        <main className="chief-main" aria-label="UG content">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`} aria-label="UG content">
           <div className="doctor-dashboard-content">
               {/* Message boxes */}
               {message && <div className="error-message">{message}</div>}

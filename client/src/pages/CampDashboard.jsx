@@ -666,7 +666,7 @@ const CampDashboard = () => {
           </aside>
         )}
 
-        <main className="chief-main">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`}>
           {error && (
             <div style={{ backgroundColor: 'rgba(248,215,218,0.9)', color: '#721c24', padding: '15px 20px', borderRadius: '8px', margin: '15px 20px', border: '1px solid rgba(245,198,203,0.9)', fontSize: '14px' }}>
               <strong>API Error:</strong> {error}

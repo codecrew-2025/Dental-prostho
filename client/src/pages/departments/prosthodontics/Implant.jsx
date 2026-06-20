@@ -6,6 +6,8 @@ import { API_BASE_URL } from '../../../config/api';
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 import { getCurrentPatientId, getSharedXrayImage } from '../../../utils/sharedXray';
 import { clearCaseDraft, loadCaseDraft, saveCaseDraft } from '../../../utils/caseDraft';
+import FollowUpAppointment from '../../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../../utils/appointmentUtils';
 
 export default function CaseSheet() {
   const DRAFT_ROUTE_KEY = '/Implant';
@@ -18,6 +20,8 @@ export default function CaseSheet() {
   const [xrayImage, setXrayImage] = useState(null);
   const [xrayPreview, setXrayPreview] = useState('');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const currentPatientId = getCurrentPatientId();
@@ -291,6 +295,11 @@ export default function CaseSheet() {
             await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
             localStorage.removeItem('redoEditCaseId');
             localStorage.removeItem('redoEditDepartmentKey');
+            
+            if (followUpDate && followUpTime) {
+              await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+            }
+
             alert('Case sheet updated and resubmitted successfully');
             navigate('/pg-dashboard');
             return;
@@ -327,6 +336,11 @@ export default function CaseSheet() {
               const newId = data?.data?._id || data?.data?._doc?._id || data?.caseId;
               if (newId) localStorage.setItem('caseId', newId);
               await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
+              
+              if (followUpDate && followUpTime) {
+                await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+              }
+
               console.log('Implant case submitted:', data);
               alert('Case sheet submitted successfully');
               navigate('/prescriptions');
@@ -521,6 +535,7 @@ export default function CaseSheet() {
           style={{ maxWidth: 120, height: "auto", marginBottom: 10 }}
         />
         <h2 style={{ margin: 0 }}>SRM Dental College</h2>
+        <h3 style={{ margin: '5px 0', fontWeight: 'bold' }}>DEPARTMENT OF PROSTHODONTICS</h3>
       </div>
 
       {/* Attach handleSubmit to the form */}
@@ -1128,9 +1143,17 @@ export default function CaseSheet() {
             </div>
           )}
         </div>
+        </div>
       </div>
 
-          </div>
+      {currentPage === totalPages - 1 && (
+              <FollowUpAppointment 
+                  date={followUpDate} 
+                  setDate={setFollowUpDate} 
+                  time={followUpTime} 
+                  setTime={setFollowUpTime} 
+              />
+          )}
 
         {/* Navigation for all pages */}
         <div className="navigation" style={{ marginTop: 30 }}>

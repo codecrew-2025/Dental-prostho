@@ -6,6 +6,8 @@ import { API_BASE_URL } from '../../../config/api';
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 import { getCurrentPatientId, getSharedXrayImage } from '../../../utils/sharedXray';
 import { clearCaseDraft, loadCaseDraft, saveCaseDraft } from '../../../utils/caseDraft';
+import FollowUpAppointment from '../../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../../utils/appointmentUtils';
 
 const CaseSheet = () => {
   const DRAFT_ROUTE_KEY = '/partial';
@@ -253,6 +255,8 @@ const CaseSheet = () => {
   const [xrayPreview, setXrayPreview] = useState('');
   const [allergyMessage, setAllergyMessage] = useState('Loading allergies...');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -667,6 +671,11 @@ const CaseSheet = () => {
           await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
           localStorage.removeItem('redoEditCaseId');
           localStorage.removeItem('redoEditDepartmentKey');
+          
+          if (followUpDate && followUpTime) {
+            await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+          }
+
           alert('Partial Denture Case Sheet updated and resubmitted successfully!');
           navigate('/pg-dashboard');
           return;
@@ -701,6 +710,11 @@ const CaseSheet = () => {
             const newCaseId = result?.caseId || result?.data?._id;
             if (newCaseId) localStorage.setItem('caseId', newCaseId);
             await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
+            
+            if (followUpDate && followUpTime) {
+              await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+            }
+
             alert('Partial Denture Case Sheet submitted and saved successfully!');
             window.location.href = '/prescriptions';
           } else {
@@ -2046,6 +2060,13 @@ const CaseSheet = () => {
                 )}
               </div>
               
+              <FollowUpAppointment 
+                  date={followUpDate} 
+                  setDate={setFollowUpDate} 
+                  time={followUpTime} 
+                  setTime={setFollowUpTime} 
+              />
+
               {/* Submit Confirmation */}
               <div style={{ 
                 backgroundColor: 'rgba(255, 255, 255, 0.1)', 

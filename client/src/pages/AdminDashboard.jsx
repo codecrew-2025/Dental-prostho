@@ -206,43 +206,7 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error('Error fetching data:', err);
       setError(err.message);
-
-      // Show mock data for development
-      const mockPatients = [
-        {
-          _id: '1',
-          patientId: 'P001',
-          personalInfo: {
-            firstName: 'John',
-            lastName: 'Doe',
-            email: 'john.doe@example.com',
-            phone: '9876543210',
-            dateOfBirth: '1990-01-01',
-            gender: 'Male',
-            address: '123 Main St, City, State'
-          },
-          status: 'active',
-          createdAt: new Date().toISOString()
-        },
-        {
-          _id: '2',
-          patientId: 'P002',
-          personalInfo: {
-            firstName: 'Jane',
-            lastName: 'Smith',
-            email: 'jane.smith@example.com',
-            phone: '9876543211',
-            dateOfBirth: '1985-05-15',
-            gender: 'Female',
-            address: '456 Oak St, City, State'
-          },
-          status: 'active',
-          createdAt: new Date().toISOString()
-        }
-      ];
-
-      setPatients(mockPatients);
-      console.log('Using mock data due to API error');
+      setPatients([]);
     } finally {
       setLoading(false);
     }
@@ -836,7 +800,7 @@ const AdminDashboard = () => {
           </aside>
         )}
 
-        <main className="chief-main">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`}>
           {error && (
             <div style={{
               backgroundColor: 'rgba(248, 215, 218, 0.9)',
@@ -848,8 +812,6 @@ const AdminDashboard = () => {
               fontSize: '14px'
             }}>
               <strong>API Error:</strong> {error}
-              <br />
-              <small>Using mock data for demonstration. Please check your backend connection.</small>
             </div>
           )}
 
@@ -1334,37 +1296,21 @@ const AdminDashboard = () => {
               <h2>Reports</h2>
               <h3>Today's Patient Statistics</h3>
               {(() => {
-                // Default fallback based on registrations if API not available
-                const today = new Date();
-                const yyyy = today.getFullYear();
-                const mm = String(today.getMonth() + 1).padStart(2, '0');
-                const dd = String(today.getDate()).padStart(2, '0');
-                const todayStr = `${yyyy}-${mm}-${dd}`;
-
-                const todayPatients = patients.filter(p => {
-                  const regDate = p.createdAt ? p.createdAt.slice(0, 10) : '';
-                  return regDate === todayStr;
-                });
-
-                let male = todayPatients.filter(p => (p.personalInfo?.gender || p.gender)?.toLowerCase() === 'male').length;
-                let female = todayPatients.filter(p => (p.personalInfo?.gender || p.gender)?.toLowerCase() === 'female').length;
-                let others = todayPatients.filter(p => {
-                  const g = (p.personalInfo?.gender || p.gender)?.toLowerCase();
-                  return g && g !== 'male' && g !== 'female';
-                }).length;
-                let newPatients = todayPatients.length;
-                let oldPatients = patients.length - newPatients;
-
-                // If backend today-visit stats are available, prefer those (visited today)
-                if (todayVisitStats && todayVisitStats.success) {
-                  male = todayVisitStats.malePatients ?? male;
-                  female = todayVisitStats.femalePatients ?? female;
-                  const visitedTotal = todayVisitStats.uniqueSeenCount ?? (todayVisitStats.newPatientsVisited || 0) + (todayVisitStats.oldPatientsVisited || 0);
-                  const knownGender = (male || 0) + (female || 0);
-                  others = Math.max(0, (visitedTotal || 0) - knownGender);
-                  newPatients = todayVisitStats.newPatientsVisited ?? newPatients;
-                  oldPatients = todayVisitStats.oldPatientsVisited ?? oldPatients;
+                if (!todayVisitStats || !todayVisitStats.success) {
+                  return (
+                    <div style={{ marginTop: 20, padding: 20, backgroundColor: '#f8f9fa', borderRadius: 8, textAlign: 'center', color: '#6c757d' }}>
+                      <p>Statistics unavailable. Please ensure backend services are running.</p>
+                    </div>
+                  );
                 }
+
+                const male = todayVisitStats.malePatients || 0;
+                const female = todayVisitStats.femalePatients || 0;
+                const newPatients = todayVisitStats.newPatientsVisited || 0;
+                const oldPatients = todayVisitStats.oldPatientsVisited || 0;
+                const visitedTotal = todayVisitStats.uniqueSeenCount || (newPatients + oldPatients);
+                const knownGender = male + female;
+                const others = Math.max(0, visitedTotal - knownGender);
 
                 return (
                   <>

@@ -2155,7 +2155,7 @@ const PGDashboard = ({ brandTitleOverride }) => {
           </aside>
         )}
 
-        <main className="chief-main" aria-label="PG content">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`} aria-label="PG content">
           <div className="doctor-dashboard-content">
               {/* Message boxes */}
               {message && <div className="error-message">{message}</div>}

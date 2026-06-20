@@ -418,6 +418,11 @@
   background: #fff;
   padding: 16px;
   margin-left: 270px;
+  transition: margin-left 0.3s ease;
+}
+
+.chief-main.expanded {
+  margin-left: 0;
 }
 
 /* Ensure row/column grid lines are visible on white main area */

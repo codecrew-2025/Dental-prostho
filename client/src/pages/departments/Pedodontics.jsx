@@ -7,6 +7,8 @@ import { API_BASE_URL } from '../../config/api';
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 import { getCurrentPatientId, getSharedXrayImage } from '../../utils/sharedXray';
 import { clearCaseDraft, loadCaseDraft, saveCaseDraft } from '../../utils/caseDraft';
+import FollowUpAppointment from '../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../utils/appointmentUtils';
 
 const Pedodontics = () => {
   const navigate = useNavigate();
@@ -84,6 +86,8 @@ const Pedodontics = () => {
   const [showAllergy, setShowAllergy] = useState(true);
   const [xrayPreview, setXrayPreview] = useState('');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
 
   const buildApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
@@ -366,6 +370,11 @@ const Pedodontics = () => {
           await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
           localStorage.removeItem('redoEditCaseId');
           localStorage.removeItem('redoEditDepartmentKey');
+          
+          if (followUpDate && followUpTime) {
+            await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+          }
+
           showMessageBox('Success', 'Case Sheet updated and resubmitted successfully!');
           setTimeout(() => {
             navigate('/pg-dashboard');
@@ -390,6 +399,11 @@ const Pedodontics = () => {
       if (response.ok) {
         localStorage.setItem('caseId', data.caseId);
         await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
+        
+        if (followUpDate && followUpTime) {
+          await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+        }
+
         showMessageBox('Success', 'Case Sheet submitted and saved successfully!');
         setTimeout(() => {
           navigate('/prescriptions');
@@ -1296,6 +1310,12 @@ const Pedodontics = () => {
           )}
         </div>
       </div>
+      <FollowUpAppointment 
+        date={followUpDate} 
+        setDate={setFollowUpDate} 
+        time={followUpTime} 
+        setTime={setFollowUpTime} 
+      />
     </div>
   );
 

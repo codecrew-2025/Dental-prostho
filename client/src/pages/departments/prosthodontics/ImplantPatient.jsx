@@ -6,6 +6,8 @@ import { API_BASE_URL } from '../../../config/api';
 const CASE_CONSENT_NAV_STATE_KEY = 'caseSheetConsentApproved';
 import { getCurrentPatientId, getSharedXrayImage } from '../../../utils/sharedXray';
 import { clearCaseDraft, loadCaseDraft, saveCaseDraft } from '../../../utils/caseDraft';
+import FollowUpAppointment from '../../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../../utils/appointmentUtils';
 
 const SRMDentalForm = () => {
   const DRAFT_ROUTE_KEY = '/ImplantPatient';
@@ -17,6 +19,8 @@ const SRMDentalForm = () => {
   const [xrayImage, setXrayImage] = useState(null);
   const [xrayPreview, setXrayPreview] = useState('');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
   const pageContentRef = useRef(null);
   const signatureFileRef = useRef(null);
   const navigate = useNavigate();
@@ -361,6 +365,10 @@ const SRMDentalForm = () => {
           for (let i = 5; i <= 7; i++) {
             localStorage.removeItem(`page${i}`);
           }
+          
+          if (followUpDate && followUpTime) {
+            await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+          }
 
           alert('Implant Patient Case Sheet updated and resubmitted successfully!');
           navigate('/pg-dashboard');
@@ -403,6 +411,10 @@ const SRMDentalForm = () => {
             // Clear any staged page data so next visit starts fresh
             for (let i = 5; i <= 7; i++) {
               localStorage.removeItem(`page${i}`);
+            }
+
+            if (followUpDate && followUpTime) {
+              await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
             }
 
             alert('Implant Patient Case Sheet submitted and saved successfully!');
@@ -519,7 +531,8 @@ const SRMDentalForm = () => {
         <div style={{ textAlign: 'center' }}>
           <img src="/logo.png" alt="SRM Logo" className="srm-logo" style={{ display: 'block', margin: '0 auto' }} />
           <h1 className="srm-h1">SRM Dental College</h1>
-          {subtitle && <h2 className="srm-h2">{subtitle}</h2>}
+          <h2 className="srm-h2" style={{ fontWeight: 'bold', margin: '5px 0' }}>DEPARTMENT OF PROSTHODONTICS</h2>
+          {subtitle && <h3 className="srm-h3" style={{ color: '#cbd5e1', fontSize: '1.1rem' }}>{subtitle}</h3>}
         </div>
       </div>
     );
@@ -1244,6 +1257,13 @@ const SRMDentalForm = () => {
           )}
         </div>
       </div>
+
+      <FollowUpAppointment 
+          date={followUpDate} 
+          setDate={setFollowUpDate} 
+          time={followUpTime} 
+          setTime={setFollowUpTime} 
+      />
 
         <NavigationButtons
           onPrev={onPrev}

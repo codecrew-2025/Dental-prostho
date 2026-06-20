@@ -12,6 +12,8 @@ import {
   classifyUrgency,
   generatePatientEducation,
 } from '../../utils/generalDoctorAlgorithm';
+import FollowUpAppointment from '../../components/FollowUpAppointment';
+import { bookFollowUpAppointment } from '../../utils/appointmentUtils';
 import './OralMedicine.css';
 
 const DRAFT_ROUTE_KEY = '/oral-medicine'; 
@@ -85,6 +87,8 @@ const OralMedicine = () => {
   const { user } = useAuth();
 
   const [form, setForm] = useState(INITIAL_FORM);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -469,6 +473,12 @@ const OralMedicine = () => {
         }
 
         if (data.data?._id) localStorage.setItem('caseId', data.data._id);
+        
+        // Book Follow-up Appointment if selected
+        if (followUpDate && followUpTime) {
+          await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
+        }
+
         await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
         const pName = form.patientName || patientName || 'Patient';
         const referral = referralDepartments.length ? `\n\nReferred priority: ${referralDepartments.join(' → ')}` : '';
@@ -922,6 +932,13 @@ const OralMedicine = () => {
           <p style={{ color: '#b91c1c', fontSize: '0.8rem', marginTop: 4 }}>Signature is required to submit.</p>
         )}
       </div>
+
+      <FollowUpAppointment 
+        date={followUpDate} 
+        setDate={setFollowUpDate} 
+        time={followUpTime} 
+        setTime={setFollowUpTime} 
+      />
     </div>
   );
 

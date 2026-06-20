@@ -1203,7 +1203,7 @@ const ChiefDoctorDashboard = () => {
           </aside>
         )}
 
-        <main className="chief-main" aria-label="Chief doctor content">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`} aria-label="Chief doctor content">
           {activeView === "blank" && (
             <section className="chief-section-card">
               <div className="chief-section-header-row">
@@ -1564,52 +1564,70 @@ const ChiefDoctorDashboard = () => {
                   <div className="chief-analytics-charts">
                     <div className="chief-chart-container">
                       <h3>Male vs Female</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: "Male", value: analyticsReport.malePatients || 0 },
-                              { name: "Female", value: analyticsReport.femalePatients || 0 },
-                            ]}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={(entry) => `${entry.name}: ${entry.value}`}
-                          >
-                            <Cell fill="#3b82f6" />
-                            <Cell fill="#ec4899" />
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {(() => {
+                        const male = analyticsReport.malePatients || 0;
+                        const female = analyticsReport.femalePatients || 0;
+                        if (male + female === 0) {
+                          return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                        }
+                        return (
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: "Male", value: male },
+                                  { name: "Female", value: female },
+                                ]}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={(entry) => `${entry.name}: ${entry.value}`}
+                              >
+                                <Cell fill="#3b82f6" />
+                                <Cell fill="#ec4899" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        );
+                      })()}
                     </div>
 
                     <div className="chief-chart-container">
                       <h3>Old vs New</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: "New", value: analyticsReport.newPatientsVisited || 0 },
-                              { name: "Old", value: analyticsReport.oldPatientsVisited || 0 },
-                            ]}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={(entry) => `${entry.name}: ${entry.value}`}
-                          >
-                            <Cell fill="#10b981" />
-                            <Cell fill="#f59e0b" />
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {(() => {
+                        const newP = analyticsReport.newPatientsVisited || 0;
+                        const oldP = analyticsReport.oldPatientsVisited || 0;
+                        if (newP + oldP === 0) {
+                          return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                        }
+                        return (
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: "New", value: newP },
+                                  { name: "Old", value: oldP },
+                                ]}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={(entry) => `${entry.name}: ${entry.value}`}
+                              >
+                                <Cell fill="#10b981" />
+                                <Cell fill="#f59e0b" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        );
+                      })()}
                     </div>
                   </div>
                 </>

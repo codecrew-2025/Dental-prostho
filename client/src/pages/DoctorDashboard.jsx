@@ -2368,7 +2368,7 @@ const DoctorDashboard = () => {
           </aside>
         )}
 
-        <main className="chief-main" aria-label="Doctor content">
+        <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`} aria-label="Doctor content">
           {/* My Appointments View */}
           {activeView === 'myAppointments' && (
             <section className="chief-section-card">
@@ -3004,104 +3004,106 @@ const DoctorDashboard = () => {
                     {/* Patients by PG Pie Chart */}
                     <div className="chief-chart-container">
                       <h3>Patients Distribution by Student</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={filteredAnalyticsPgs.map((d) => ({
-                              name: d.pgName || d.pgIdentity,
-                              value: d.uniquePatients || 0,
-                            }))}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={(entry) => `${entry.name}: ${entry.value}`}
-                          >
-                            {filteredAnalyticsPgs.map((_, index) => (
-                              <Cell key={`cell-${index}`} fill={`hsl(${index * 137.5}, 70%, 50%)`} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {(() => {
+                        const total = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.uniquePatients || 0), 0);
+                        if (total === 0) {
+                          return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                        }
+                        return (
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={filteredAnalyticsPgs.map((d) => ({
+                                  name: d.pgName || d.pgIdentity,
+                                  value: d.uniquePatients || 0,
+                                }))}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={(entry) => `${entry.name}: ${entry.value}`}
+                              >
+                                {filteredAnalyticsPgs.map((_, index) => (
+                                  <Cell key={`cell-${index}`} fill={`hsl(${index * 137.5}, 70%, 50%)`} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        );
+                      })()}
                     </div>
 
                     {/* Gender Distribution Pie Chart */}
                     <div className="chief-chart-container">
                       <h3>Gender Distribution</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={[
-                              {
-                                name: 'Male',
-                                value: filteredAnalyticsPgs.reduce(
-                                  (sum, d) => sum + (d.malePatients || 0),
-                                  0
-                                ),
-                              },
-                              {
-                                name: 'Female',
-                                value: filteredAnalyticsPgs.reduce(
-                                  (sum, d) => sum + (d.femalePatients || 0),
-                                  0
-                                ),
-                              },
-                            ]}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={(entry) => `${entry.name}: ${entry.value}`}
-                          >
-                            <Cell fill="#3b82f6" />
-                            <Cell fill="#ec4899" />
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {(() => {
+                        const male = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.malePatients || 0), 0);
+                        const female = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.femalePatients || 0), 0);
+                        if (male + female === 0) {
+                          return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                        }
+                        return (
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: 'Male', value: male },
+                                  { name: 'Female', value: female },
+                                ]}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={(entry) => `${entry.name}: ${entry.value}`}
+                              >
+                                <Cell fill="#3b82f6" />
+                                <Cell fill="#ec4899" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        );
+                      })()}
                     </div>
 
                     {/* New vs Old Patients Pie Chart */}
                     <div className="chief-chart-container">
                       <h3>Old vs New Patients</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={[
-                              {
-                                name: 'New Patients',
-                                value: filteredAnalyticsPgs.reduce(
-                                  (sum, d) => sum + (d.newPatients || 0),
-                                  0
-                                ),
-                              },
-                              {
-                                name: 'Old Patients',
-                                value: filteredAnalyticsPgs.reduce(
-                                  (sum, d) => sum + (d.oldPatients || 0),
-                                  0
-                                ),
-                              },
-                            ]}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={(entry) => `${entry.name}: ${entry.value}`}
-                          >
-                            <Cell fill="#10b981" />
-                            <Cell fill="#f59e0b" />
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      {(() => {
+                        const newP = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.newPatients || 0), 0);
+                        const oldP = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.oldPatients || 0), 0);
+                        if (newP + oldP === 0) {
+                          return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                        }
+                        return (
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={[
+                                  { name: 'New Patients', value: newP },
+                                  { name: 'Old Patients', value: oldP },
+                                ]}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                label={(entry) => `${entry.name}: ${entry.value}`}
+                              >
+                                <Cell fill="#10b981" />
+                                <Cell fill="#f59e0b" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -3220,65 +3222,71 @@ const DoctorDashboard = () => {
                   {/* Gender Distribution Pie Chart */}
                   <div className="chief-chart-container">
                     <h3>Gender Distribution</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { 
-                              name: 'Male', 
-                              value: doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.malePatients || 0), 0) 
-                            },
-                            { 
-                              name: 'Female', 
-                              value: doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.femalePatients || 0), 0) 
-                            }
-                          ]}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={(entry) => `${entry.name}: ${entry.value}`}
-                        >
-                          <Cell fill="#3b82f6" />
-                          <Cell fill="#ec4899" />
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {(() => {
+                      const male = doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.malePatients || 0), 0);
+                      const female = doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.femalePatients || 0), 0);
+                      if (male + female === 0) {
+                        return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                      }
+                      return (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Male', value: male },
+                                { name: 'Female', value: female }
+                              ]}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={(entry) => `${entry.name}: ${entry.value}`}
+                            >
+                              <Cell fill="#3b82f6" />
+                              <Cell fill="#ec4899" />
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
                   </div>
 
                   {/* New vs Old Patients Pie Chart */}
                   <div className="chief-chart-container">
                     <h3>Old vs New Patients</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { 
-                              name: 'New Patients', 
-                              value: doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.newPatients || 0), 0) 
-                            },
-                            { 
-                              name: 'Old Patients', 
-                              value: doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.oldPatients || 0), 0) 
-                            }
-                          ]}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={(entry) => `${entry.name}: ${entry.value}`}
-                        >
-                          <Cell fill="#10b981" />
-                          <Cell fill="#f59e0b" />
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {(() => {
+                      const newP = doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.newPatients || 0), 0);
+                      const oldP = doctorPgAnalyticsReport.pgs.reduce((sum, d) => sum + (d.oldPatients || 0), 0);
+                      if (newP + oldP === 0) {
+                        return <div className="chief-empty-state" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No data available for the selected dates</div>;
+                      }
+                      return (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'New Patients', value: newP },
+                                { name: 'Old Patients', value: oldP }
+                              ]}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={(entry) => `${entry.name}: ${entry.value}`}
+                            >
+                              <Cell fill="#10b981" />
+                              <Cell fill="#f59e0b" />
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
                   </div>
 
                 </div>
