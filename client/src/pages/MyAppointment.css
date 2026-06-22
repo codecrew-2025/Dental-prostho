@@ -227,17 +227,17 @@
 
 .appointment-table th:nth-child(3),
 .appointment-table td:nth-child(3) {
-  /* Complaint */
-  width: 24%;
-  min-width: 160px;
-}
-
-.appointment-table th:nth-child(4),
-.appointment-table td:nth-child(4) {
   /* Date & Time */
   width: 18%;
   min-width: 140px;
   white-space: nowrap;
+}
+
+.appointment-table th:nth-child(4),
+.appointment-table td:nth-child(4) {
+  /* Complaint */
+  width: 24%;
+  min-width: 160px;
 }
 
 .appointment-table th:nth-child(5),
@@ -304,9 +304,9 @@
 }
 
 .status-expired {
-  background-color: rgba(149, 165, 166, 0.2);
-  color: #95a5a6;
-  border: 1px solid rgba(149, 165, 166, 0.4);
+  background-color: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+  border: 1px solid rgba(231, 76, 60, 0.4);
 }
 
 /* Action Buttons */
@@ -569,8 +569,8 @@
   }
 
   /* Hide complaint column on very small screens */
-  .appointment-table th:nth-child(3),
-  .appointment-table td:nth-child(3) {
+  .appointment-table th:nth-child(4),
+  .appointment-table td:nth-child(4) {
     display: none;
   }
 
@@ -585,8 +585,8 @@
     width: 26%;
   }
 
-  .appointment-table th:nth-child(4),
-  .appointment-table td:nth-child(4) {
+  .appointment-table th:nth-child(3),
+  .appointment-table td:nth-child(3) {
     width: 24%;
   }
 

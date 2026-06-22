@@ -1926,12 +1926,42 @@ router.patch('/chief/assigned-doctors/:doctorId/update', auth, requireRole(['chi
   }
 });
 
-// Get all cases from assigned PGs across all departments
 router.get('/doctor/assigned-pgs/cases', auth, requireRole(['doctor']), async (req, res) => {
   try {
-    // Get all PGs assigned by this doctor
+    const generalCaseModule = await import('../models/GeneralCase.js');
+    const GeneralCase = generalCaseModule.default;
+
+    const doctorIdentity = String(req.user?.Identity || '').trim();
+    const rawDoctorIdentity = String(req.user?.Identity || '');
+    
+    // First, find all referrals where this doctor is the specialist doctor
+    const doctorReferrals = await GeneralCase.find({
+      $or: [
+        { specialistDoctorId: doctorIdentity },
+        { specialistDoctorId: rawDoctorIdentity },
+        { specialistDoctorId: req.user._id },
+        { specialistDoctorId: String(req.user._id) },
+      ],
+      specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
+    }, { assignedPgId: 1 }).lean();
+    
+    const pgIdentitiesFromReferrals = [...new Set(
+      doctorReferrals.map(r => String(r.assignedPgId || '').trim()).filter(Boolean)
+    )];
+    const pgRawIdentitiesFromReferrals = [...new Set(
+      doctorReferrals.map(r => String(r.assignedPgId || '')).filter(Boolean)
+    )];
+
+    // Get all PGs assigned by this doctor (either created by them OR assigned to referrals supervised by them)
     const assignedPGs = await User.find(
-      { role: 'pg', createdBy: req.user._id },
+      { 
+        role: 'pg',
+        $or: [
+          { createdBy: req.user._id },
+          { Identity: { $in: pgIdentitiesFromReferrals } },
+          { Identity: { $in: pgRawIdentitiesFromReferrals } }
+        ]
+      },
       { Identity: 1, name: 1 }
     ).lean();
 

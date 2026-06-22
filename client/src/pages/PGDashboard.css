@@ -503,69 +503,69 @@
 }
 
 /* Case History table column sizing (PG dashboard)
-   Columns: S.No, Date, Patient Name, Patient ID, Department, Status, Redo Message, Action */
+   Columns: Patient Name, Patient ID, Department, Status, Redo Message, Action */
 .pg-assigned-cases .pg-history-table th:nth-child(1),
 .pg-assigned-cases .pg-history-table td:nth-child(1) {
-  width: 6%;
-  text-align: center;
+  width: 16%;
+  min-width: 150px;
+  text-align: left;
 }
 
 .pg-assigned-cases .pg-history-table th:nth-child(2),
 .pg-assigned-cases .pg-history-table td:nth-child(2) {
   width: 10%;
+  min-width: 100px;
+  text-align: center;
 }
 
 .pg-assigned-cases .pg-history-table th:nth-child(3),
 .pg-assigned-cases .pg-history-table td:nth-child(3) {
-  width: 15%;
+  width: 16%;
+  min-width: 140px;
+  text-align: center;
 }
 
 .pg-assigned-cases .pg-history-table th:nth-child(4),
 .pg-assigned-cases .pg-history-table td:nth-child(4) {
   width: 10%;
+  min-width: 100px;
+  text-align: center;
 }
 
 .pg-assigned-cases .pg-history-table th:nth-child(5),
 .pg-assigned-cases .pg-history-table td:nth-child(5) {
-  width: 20%;
+  width: 24%;
+  min-width: 160px;
+  text-align: center;
 }
 
 .pg-assigned-cases .pg-history-table th:nth-child(6),
 .pg-assigned-cases .pg-history-table td:nth-child(6) {
-  width: 10%;
-}
-
-.pg-assigned-cases .pg-history-table th:nth-child(7),
-.pg-assigned-cases .pg-history-table td:nth-child(7) {
-  width: 23%;
-}
-
-.pg-assigned-cases .pg-history-table th:nth-child(8),
-.pg-assigned-cases .pg-history-table td:nth-child(8) {
-  width: 13%;
+  width: 24%;
+  min-width: 220px;
   text-align: center;
 }
 
 /* Keep status badge fully inside Status column in PG table */
-.pg-assigned-cases .pg-assigned-cases-table td:nth-child(6) {
+.pg-assigned-cases .pg-assigned-cases-table td:nth-child(4) {
   overflow: hidden;
 }
 
-.pg-assigned-cases .pg-assigned-cases-table td:nth-child(5) {
+.pg-assigned-cases .pg-assigned-cases-table td:nth-child(3) {
   max-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.pg-assigned-cases .pg-assigned-cases-table td:nth-child(6) {
+.pg-assigned-cases .pg-assigned-cases-table td:nth-child(4) {
   max-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.pg-assigned-cases .pg-assigned-cases-table td:nth-child(6) .status-badge {
+.pg-assigned-cases .pg-assigned-cases-table td:nth-child(4) .status-badge {
   min-width: 0 !important;
   max-width: 100%;
   box-sizing: border-box;
@@ -596,15 +596,16 @@
 }
 
 /* My Appointments column sizing (PG dashboard)
-   Columns: S.No, Patient Name, Patient ID, Date & Time, Complaint, Action */
+   Columns: Doctor, Patient Name, Patient ID, Date & Time, Complaint, Action */
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(1),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(1) {
-  width: 5%;
+  width: 18%;
+  min-width: 140px;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(2),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(2) {
-  width: 16%;
+  width: 15%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(3),
@@ -614,17 +615,18 @@
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(4),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(4) {
-  width: 18%;
+  width: 16%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(5),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(5) {
-  width: 29%;
+  width: 20%;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th:nth-child(6),
 .pg-my-appointments .pg-assigned-cases-table td:nth-child(6) {
-  width: 22%;
+  width: 21%;
+  min-width: 260px;
 }
 
 .pg-my-appointments .pg-assigned-cases-table th,
@@ -1583,6 +1585,12 @@
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.4));
   color: #fca5a5;
   border-color: rgba(248, 113, 113, 0.4);
+}
+
+.badge-orange {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.4));
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.4);
 }
 
 /* Premium Buttons */

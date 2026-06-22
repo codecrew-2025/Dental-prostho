@@ -37,7 +37,7 @@ const DoctorDashboard = () => {
   };
 
   const [isSideNavOpen, setIsSideNavOpen] = useState(true);
-  const [activeView, setActiveView] = useState('myAppointments'); // 'myAppointments', 'patient', 'myPGs', 'pgAppointments', 'referrals', 'reports', 'analytics', 'caseFiles'
+  const [activeView, setActiveView] = useState('patient'); // 'patient', 'myPGs', 'pgAppointments', 'referrals', 'reports', 'analytics', 'caseFiles'
   const [showLogoutDropdown, setShowLogoutDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const hasAutoRestoredPatientRef = useRef(false);
@@ -2183,18 +2183,7 @@ const DoctorDashboard = () => {
             <div className="chief-sidenav-section">
               <div className="chief-sidenav-title">Menu</div>
 
-              <button
-                type="button"
-                className={`chief-nav-item ${activeView === 'myAppointments' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveView('myAppointments');
-                  fetchMyAppointments({ silent: true });
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-              >
-                <span className="chief-nav-icon">📅</span>
-                <span>My Appointments</span>
-              </button>
+
 
               <button
                 type="button"
@@ -2369,62 +2358,7 @@ const DoctorDashboard = () => {
         )}
 
         <main className={`chief-main ${!isSideNavOpen ? 'expanded' : ''}`} aria-label="Doctor content">
-          {/* My Appointments View */}
-          {activeView === 'myAppointments' && (
-            <section className="chief-section-card">
-              <div className="chief-section-header-row">
-                <h2>My Appointments</h2>
-                <button type="button" className="view-button" onClick={() => fetchMyAppointments()}>
-                  Refresh
-                </button>
-              </div>
 
-              {myAppointmentsError && <div className="error-message">{myAppointmentsError}</div>}
-
-              {myAppointmentsLoading ? (
-                <div className="chief-inline-loading">Loading appointments...</div>
-              ) : myAppointments.length === 0 ? (
-                <div className="chief-empty-state">No appointments assigned to you yet.</div>
-              ) : (
-                <table className="chief-simple-table">
-                  <thead>
-                    <tr>
-                      <th>S.No</th>
-                      <th>Booking ID</th>
-                      <th>Patient ID</th>
-                      <th>Patient Name</th>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Chief Complaint</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myAppointments.map((appointment, index) => (
-                      <tr key={appointment.bookingId}>
-                        <td>{index + 1}</td>
-                        <td>{appointment.bookingId}</td>
-                        <td>{appointment.patientId}</td>
-                        <td>{appointment.patientName || '-'}</td>
-                        <td>{appointment.appointmentDate}</td>
-                        <td>{appointment.appointmentTime}</td>
-                        <td>{appointment.chiefComplaint}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="view-button"
-                            onClick={() => handleSelectPatientFromAppointment(appointment)}
-                          >
-                            View Patient
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-          )}
 
           {/* My PGs View */}
           {activeView === 'myPGs' && (

@@ -114,57 +114,38 @@
 /* Column 1: S.No */
 .appointments-table td:nth-child(1),
 .appointments-table th:nth-child(1) {
-  width: 45px;
+  width: 60px;
+  text-align: center;
 }
 
-/* Column 2: Booking ID */
+/* Column 2: Patient Name */
 .appointments-table td:nth-child(2),
 .appointments-table th:nth-child(2) {
-  width: 125px;
+  width: 180px;
 }
 
-/* Column 3: Patient Name */
+/* Column 3: Patient ID */
 .appointments-table td:nth-child(3),
 .appointments-table th:nth-child(3) {
-  width: 150px;
+  width: 120px;
 }
 
-/* Column 4: Patient ID */
+/* Column 4: Email */
 .appointments-table td:nth-child(4),
 .appointments-table th:nth-child(4) {
-  width: 100px;
+  width: 250px;
 }
 
-/* Column 5: Email */
+/* Column 5: Date & Time */
 .appointments-table td:nth-child(5),
 .appointments-table th:nth-child(5) {
-  width: 240px;
+  width: 160px;
 }
 
-/* Column 6: Date & Time */
+/* Column 6: Complaint */
 .appointments-table td:nth-child(6),
 .appointments-table th:nth-child(6) {
-  width: 150px;
-}
-
-/* Column 7: Complaint */
-.appointments-table td:nth-child(7),
-.appointments-table th:nth-child(7) {
-  width: 190px;
-}
-
-/* Column 8: Status */
-.appointments-table td:nth-child(8),
-.appointments-table th:nth-child(8) {
-  width: 120px;
-  text-align: center;
-}
-
-/* Column 9: Actions */
-.appointments-table td:nth-child(9),
-.appointments-table th:nth-child(9) {
-  width: 190px;
-  text-align: center;
+  width: auto;
 }
 
 /* STATUS BADGES */

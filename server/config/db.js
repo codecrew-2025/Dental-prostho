@@ -30,17 +30,20 @@ const getDnsServers = () => {
 };
 
 const getConnectOptions = () => {
-  const maxPoolSize = Number(process.env.MONGO_MAX_POOL_SIZE || 10);
-  const minPoolSize = Number(process.env.MONGO_MIN_POOL_SIZE || 1);
-  const serverSelectionTimeoutMS = Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 8000);
-  const socketTimeoutMS = Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 45000);
+  const maxPoolSize = Number(process.env.MONGO_MAX_POOL_SIZE || 30);
+  const minPoolSize = Number(process.env.MONGO_MIN_POOL_SIZE || 2);
+  const serverSelectionTimeoutMS = Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 15000);
+  const socketTimeoutMS = Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 60000);
+  const connectTimeoutMS = Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 60000);
 
   return {
     maxPoolSize,
     minPoolSize,
     serverSelectionTimeoutMS,
     socketTimeoutMS,
+    connectTimeoutMS,
     family: 4,
+    heartbeatFrequencyMS: 10000,
   };
 };
 

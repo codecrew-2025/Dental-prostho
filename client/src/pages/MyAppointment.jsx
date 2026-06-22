@@ -127,7 +127,7 @@ const MyAppointment = () => {
       );
 
       if (now > appointmentDateTime && status !== "cancelled") {
-        return <span className="status-tag status-cancelled">Cancelled</span>;
+        return <span className="status-tag status-expired">Expired</span>;
       }
 
       switch (status) {
@@ -137,6 +137,8 @@ const MyAppointment = () => {
           return <span className="status-tag status-cancelled">Cancelled</span>;
         case "rescheduled":
           return <span className="status-tag status-rescheduled">Rescheduled</span>;
+        case "completed":
+          return <span className="status-tag status-confirmed">Completed</span>;
         default:
           return (
             <span className="status-tag status-waiting">
@@ -199,31 +201,55 @@ const MyAppointment = () => {
         <table className="appointment-table">
           <thead>
             <tr>
-              <th>S.No</th>
-              <th>Booking ID</th>
-              <th>Patient Name</th>
-              <th>Patient ID</th>
-              <th>Email</th>
-              <th>Date & Time</th>
-              <th>Complaint</th>
+              <th>S.NO</th>
+              <th>BOOKING ID</th>
+              <th>DATE & TIME</th>
+              <th>COMPLAINT</th>
+              <th>STATUS</th>
+              <th>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
-            {appointments.map((a, index) => (
-              <tr key={a.bookingId}>
-                <td>{index + 1}</td>
-                <td>{a.bookingId}</td>
-                <td>{a.patientName || '-'}</td>
-                <td>{a.patientId}</td>
-                <td>{a.patientEmail}</td>
-                <td>
-                  {a.appointmentDate}
-                  <span className="date-time-separator">•</span>
-                  {a.appointmentTime}
-                </td>
-                <td>{a.chiefComplaint}</td>
-              </tr>
-            ))}
+            {appointments.map((a, index) => {
+              const isFuture = isFutureAppointment(a.appointmentDate, a.appointmentTime);
+              const canAction = isFuture && a.status !== "cancelled" && a.status !== "completed";
+
+              return (
+                <tr key={a.bookingId}>
+                  <td>{index + 1}</td>
+                  <td>{a.bookingId}</td>
+                  <td>
+                    {a.appointmentDate}
+                    <span className="date-time-separator">•</span>
+                    {a.appointmentTime}
+                  </td>
+                  <td>{a.chiefComplaint}</td>
+                  <td>
+                    {getStatusTag(a.status, a.appointmentDate, a.appointmentTime)}
+                  </td>
+                  <td>
+                    {canAction ? (
+                      <div className="action-buttons">
+                        <button
+                          className="btn-reschedule"
+                          onClick={() => handleReschedule(a)}
+                        >
+                          Reschedule
+                        </button>
+                        <button
+                          className="btn-cancel"
+                          onClick={() => handleCancelAppointment(a.bookingId)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="no-actions">No Actions</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

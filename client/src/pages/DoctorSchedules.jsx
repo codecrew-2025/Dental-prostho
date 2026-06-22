@@ -111,7 +111,7 @@ const DoctorSchedule = () => {
 
       const url =
         effectiveMode === "my"
-          ? buildApiUrl("/api/appointment/my-appointments")
+          ? buildApiUrl("/api/appointment/my-appointments?all=true")
           : buildApiUrl("/api/appointment/all-appointments");
 
       const res = await axios.get(url, {
@@ -267,6 +267,15 @@ const DoctorSchedule = () => {
                   }}
                 >
                   All
+                </button>
+                <button
+                  className={viewMode === "my" ? "active" : ""}
+                  onClick={() => {
+                    setViewMode("my");
+                    fetchAppointments("my");
+                  }}
+                >
+                  My
                 </button>
               </>
             )}

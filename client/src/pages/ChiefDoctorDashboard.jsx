@@ -1316,14 +1316,12 @@ const ChiefDoctorDashboard = () => {
                 <div className="chief-empty-state">No scheduled appointments found for your assigned doctors.</div>
               ) : (
                 <>
-                  <div className="chief-doctor-selector" style={{ marginBottom: "20px", display: "flex", gap: "10px", alignItems: "center" }}>
-                    <label htmlFor="doctor-select" style={{ fontWeight: "600", color: "white" }}>Select Doctor:</label>
+                  <div className="chief-doctor-selector">
                     <select 
                       id="doctor-select"
                       value={selectedAppointmentDoctor}
                       onChange={(e) => setSelectedAppointmentDoctor(e.target.value)}
-                      className="chief-select"
-                      style={{ minWidth: "250px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #ccc" }}
+                      className="chief-select-dropdown"
                     >
                       <option value="">All Doctors</option>
                       {appointmentDoctorGroups.map((group) => (
@@ -1337,35 +1335,37 @@ const ChiefDoctorDashboard = () => {
                     {appointmentDoctorGroups
                       .filter((group) => !selectedAppointmentDoctor || group.doctorIdentity === selectedAppointmentDoctor)
                       .map((group) => (
-                        <div key={`${group.doctorIdentity}-${group.department}`} className="chief-doctor-group-card">
+                        <div key={`${group.doctorIdentity}-${group.department}`} className="chief-doctor-group-container">
                           <div className="chief-doctor-group-header">
                             <h3>{group.doctorName}</h3>
-                            <div>{group.doctorIdentity} | {group.department}</div>
+                            <div className="chief-doctor-meta">{group.doctorIdentity} | {group.department}</div>
                           </div>
-                          <table className="chief-simple-table">
-                            <thead>
-                              <tr>
-                                <th>S.No</th>
-                                <th>Booking ID</th>
-                                <th>Patient ID</th>
-                                <th>Date</th>
-                                <th>Time</th>
-                                <th>Complaint</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {group.appointments.map((appointment, index) => (
-                                <tr key={appointment.bookingId}>
-                                  <td>{index + 1}</td>
-                                  <td>{appointment.bookingId || "-"}</td>
-                                  <td>{appointment.patientId || "-"}</td>
-                                  <td>{appointment.appointmentDate || "-"}</td>
-                                  <td>{appointment.appointmentTime || "-"}</td>
-                                  <td>{appointment.chiefComplaint || "-"}</td>
+                          <div className="chief-doctor-group-card">
+                            <table className="chief-simple-table">
+                              <thead>
+                                <tr>
+                                  <th>S.No</th>
+                                  <th>Booking ID</th>
+                                  <th>Patient ID</th>
+                                  <th>Date</th>
+                                  <th>Time</th>
+                                  <th>Complaint</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {group.appointments.map((appointment, index) => (
+                                  <tr key={appointment.bookingId}>
+                                    <td>{index + 1}</td>
+                                    <td>{appointment.bookingId || "-"}</td>
+                                    <td>{appointment.patientId || "-"}</td>
+                                    <td>{appointment.appointmentDate || "-"}</td>
+                                    <td>{appointment.appointmentTime || "-"}</td>
+                                    <td>{appointment.chiefComplaint || "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       ))}
                   </div>

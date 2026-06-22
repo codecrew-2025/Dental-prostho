@@ -493,7 +493,7 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
       const recentAppointment = await Appointment.findOne({
         patientId,
         appointmentDate: { $gte: todayStr },
-        status: { $in: ['pending', 'assigned', 'rescheduled'] },
+        status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
         isProcessed: { $ne: true },
       }).sort({ appointmentDate: 1, createdAt: -1 });
 

@@ -1282,6 +1282,73 @@ const PGDashboard = ({ brandTitleOverride }) => {
     fetchPgCaseSheetHistory();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const viewPrescription = (row) => {
+    (async () => {
+      try {
+        const patientName = String(row?.patientName || '').trim();
+        const patientId = String(row?.patientId || '').trim();
+        const caseId = String(row?.caseId || '').trim();
+        const department = String(row?.department || '').trim();
+
+        if (patientId) {
+          setStoredPatientId(patientId);
+          localStorage.setItem('CurrentpatientName', patientName || '');
+        }
+
+        if (caseId) {
+          localStorage.setItem('linkedCaseId', caseId);
+          localStorage.setItem('linkedCaseDepartment', department);
+        }
+
+        const token = localStorage.getItem('token');
+
+        if (!patientId) {
+          window.open('/prescriptions', '_blank');
+          return;
+        }
+
+        if (caseId) {
+          const resByCase = await fetch(buildApiUrl(`/api/prescriptions/case/${caseId}?page=1&limit=1`), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+
+          if (resByCase.ok) {
+            const json = await resByCase.json().catch(() => ({}));
+            const prescriptions = json.data || [];
+            if (prescriptions.length > 0) {
+              const prescId = prescriptions[0]._id;
+              window.open(`/prescription-view?id=${prescId}&format=pdf`, '_blank');
+              return;
+            }
+          }
+        }
+
+        const res = await fetch(buildApiUrl(`/api/prescriptions/patient/${patientId}`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          const prescriptions = json.data || [];
+          if (prescriptions.length > 0) {
+            const prescId = prescriptions[0]._id;
+            window.open(`/prescription-view?id=${prescId}&format=pdf`, '_blank');
+            return;
+          }
+        }
+
+        localStorage.setItem('linkedCaseId', caseId);
+        localStorage.setItem('linkedCaseDepartment', department);
+        window.open('/prescriptions', '_blank');
+      } catch (err) {
+        console.error('Error opening prescription view:', err);
+        localStorage.setItem('linkedCaseId', row?.caseId || '');
+        localStorage.setItem('linkedCaseDepartment', row?.department || '');
+        window.open('/prescriptions', '_blank');
+      }
+    })();
+  };
+
   const extractRedoReason = (approvalText) => {
     const rawText = String(approvalText || '').trim();
     if (!rawText) return '';
@@ -2658,8 +2725,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
                     <table className="pg-assigned-cases-table pg-history-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                       <thead>
                         <tr>
-                          <th>S.No</th>
-                          <th>Date</th>
                           <th>Patient Name</th>
                           <th>Patient ID</th>
                           <th>Department</th>
@@ -2683,20 +2748,17 @@ const PGDashboard = ({ brandTitleOverride }) => {
                           const canViewCaseSheet = isPublicHealthDentistry
                             ? Boolean(row?.canViewCaseSheet)
                             : Boolean(caseId);
-                          const createdAt = row?.createdAt ? new Date(row.createdAt) : null;
 
                           return (
                             <tr key={caseId || `${patientId}-${row?.createdAt || ''}-${index}`}
                               className="pg-assigned-row"
                             >
-                              <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{index + 1}</td>
-                              <td style={{ whiteSpace: 'nowrap' }}>{createdAt ? formatDate(createdAt) : '—'}</td>
                               <td>{patientName || '—'}</td>
                               <td>{patientId || '—'}</td>
                               <td>{department || '—'}</td>
                               <td>
                                 <span className={status === 'approved' || status === 'done' ? 'status-badge approved' : status === 'redo' ? 'status-badge redo' : 'status-badge pending'}>
-                                  {status === 'approved' ? 'Approved' : status === 'redo' ? 'Redo' : status === 'done' ? 'Done' : 'Pending'}
+                                  {status === 'approved' ? 'APPROVED' : status === 'redo' ? 'REDO' : status === 'done' ? 'DONE' : 'PENDING'}
                                 </span>
                               </td>
                               <td style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
@@ -2723,6 +2785,15 @@ const PGDashboard = ({ brandTitleOverride }) => {
                                     disabled={!canViewCaseSheet || !caseId}
                                   >
                                     View
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="view-button"
+                                    onClick={() => viewPrescription(row)}
+                                    disabled={!caseId}
+                                  >
+                                    Prescription
                                   </button>
 
                                   {!isPublicHealthDentistry && status === 'redo' && (
@@ -2777,7 +2848,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
                     <table className="pg-assigned-cases-table">
                       <thead>
                         <tr>
-                          <th>S.No</th>
                           <th>Patient Name</th>
                           <th>Patient ID</th>
                           <th>Date & Time</th>
@@ -2793,12 +2863,10 @@ const PGDashboard = ({ brandTitleOverride }) => {
                           const rescheduleReqStatus = String(appointment?.rescheduleRequest?.requestStatus || 'none').trim().toLowerCase();
                           const hasPendingReschedule = rescheduleReqStatus === 'pending';
                           const hasApprovedReschedule = rescheduleReqStatus === 'approved';
-                          const canApproveAppointment = appointmentStatus === 'pending';
-                          const canRescheduleAppointment = appointmentStatus === 'pending' && !hasPendingReschedule;
+                          const hasDoctorAssigned = appointment?.doctorId || appointment?.doctorName;
 
                           return (
                             <tr key={bookingId || `${appointment?.patientId}-${appointment?.appointmentDate}`} className="pg-assigned-row">
-                              <td>{index + 1}</td>
                               <td title={appointment?.patientName || '—'}>
                                 {appointment?.patientName || '—'}
                               </td>
@@ -2819,15 +2887,64 @@ const PGDashboard = ({ brandTitleOverride }) => {
                               </td>
                               <td>
                                 <div className="pg-premium-action-cell">
-                                  {appointmentStatus === 'rescheduled' && hasApprovedReschedule ? (
-                                    <span className="pg-premium-badge badge-green">✓ Approved</span>
-                                  ) : appointmentStatus === 'rescheduled' ? (
-                                    <span className="pg-premium-badge badge-blue">Rescheduled</span>
-                                  ) : appointmentStatus === 'confirmed' ? (
-                                    <span className="pg-premium-badge badge-green">✓ Approved</span>
+                                  {appointmentStatus === 'confirmed' || appointmentStatus === 'assigned' || appointmentStatus === 'in_progress' ? (
+                                    <div className="pg-premium-action-row">
+                                      <span className="pg-premium-badge badge-green">✓ Accepted</span>
+                                      <button
+                                        type="button"
+                                        className="pg-premium-btn btn-reschedule"
+                                        onClick={() => beginRescheduleForAppointment(appointment)}
+                                        disabled={isSubmitting}
+                                      >
+                                        Reschedule
+                                      </button>
+                                    </div>
+                                  ) : appointmentStatus === 'pending' ? (
+                                    hasDoctorAssigned ? (
+                                      <div className="pg-premium-action-row">
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-approve"
+                                          onClick={() => approveAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          {isSubmitting ? '...' : 'Accept'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="pg-premium-action-row">
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <span className="pg-premium-badge badge-orange">Pending</span>
+                                      </div>
+                                    )
                                   ) : appointmentStatus === 'reschedule_requested' ? (
                                     rescheduleReqStatus === 'pending' ? (
-                                      <span className="pg-premium-badge badge-gray">Reschedule Requested</span>
+                                      <div className="pg-premium-action-row">
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <span className="pg-premium-badge badge-gray">Reschedule Requested</span>
+                                      </div>
                                     ) : rescheduleReqStatus === 'rejected' ? (
                                       <>
                                         <span
@@ -2850,28 +2967,33 @@ const PGDashboard = ({ brandTitleOverride }) => {
                                         </div>
                                       </>
                                     ) : (
-                                      <span className="pg-premium-badge badge-gray">
-                                        {appointment?.status || 'Pending'}
-                                      </span>
+                                      <div className="pg-premium-action-row">
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <span className="pg-premium-badge badge-gray">
+                                          {appointment?.status || 'Pending'}
+                                        </span>
+                                      </div>
                                     )
                                   ) : (
                                     <div className="pg-premium-action-row">
                                       <button
                                         type="button"
-                                        className="pg-premium-btn btn-approve"
-                                        onClick={() => approveAppointment(appointment)}
-                                        disabled={isSubmitting || !canApproveAppointment}
-                                      >
-                                        {isSubmitting ? '...' : 'Approve'}
-                                      </button>
-                                      <button
-                                        type="button"
                                         className="pg-premium-btn btn-reschedule"
                                         onClick={() => beginRescheduleForAppointment(appointment)}
-                                        disabled={isSubmitting || !canRescheduleAppointment}
+                                        disabled={isSubmitting}
                                       >
                                         Reschedule
                                       </button>
+                                      <span className="pg-premium-badge badge-gray">
+                                        {appointment?.status || 'Pending'}
+                                      </span>
                                     </div>
                                   )}
                                 </div>

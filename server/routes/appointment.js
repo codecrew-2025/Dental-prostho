@@ -383,7 +383,7 @@ const attachPatientName = async (appointments) => {
 
   const users = await User.find(
     { Identity: { $in: patientIds } },
-    { Identity: 1, name: 1, personalInfo: 1 }
+    { Identity: 1, name: 1, personalInfo: 1, email: 1 }
   );
 
   const patientProfiles = patientIds.length
@@ -401,11 +401,13 @@ const attachPatientName = async (appointments) => {
     : [];
 
   const map = {};
+  const emailMap = {};
   users.forEach(u => {
     map[u.Identity] =
       u.personalInfo?.firstName ||
       u.name ||
       u.Identity;
+    emailMap[u.Identity] = u.email || '';
   });
 
   const patientProfileMap = new Map(
@@ -462,6 +464,7 @@ const attachPatientName = async (appointments) => {
     return {
       ...appointment,
       patientName: profile?.patientName || map[patientId] || patientId,
+      patientEmail: appointment?.patientEmail || emailMap[patientId] || '',
       chiefComplaint: computedChief,
       doctorName: appointment?.doctorId ? (doctorMap[String(appointment.doctorId)] || null) : null,
       // Normalize assignment identity fields so downstream callers can rely on `assignedPgId`
@@ -652,6 +655,7 @@ router.get("/my-appointments", auth, requireRole(["doctor", "chief-doctor"]), as
     const doctorId = String(req.user._id);
     const userDepartment = String(req.user?.department || '').trim();
     const isGeneralDoctor = GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalizeDepartment(userDepartment));
+    const showAll = req.query.all === 'true';
 
     // Compare as ISO date string (YYYY-MM-DD)
     const todayStr = new Date().toISOString().split("T")[0];
@@ -661,16 +665,82 @@ router.get("/my-appointments", auth, requireRole(["doctor", "chief-doctor"]), as
     if (isGeneralDoctor) {
       // 🔥 FIX: General doctors see ALL pending and assigned appointments (not just assigned to them)
       appointments = await Appointment.find({
-        status: { $in: ["pending", "assigned", "rescheduled"] },
-        appointmentDate: { $gte: todayStr },
+        status: { $in: ["pending", "confirmed", "assigned", "rescheduled"] },
+        ...(showAll ? {} : { appointmentDate: { $gte: todayStr } }),
         isProcessed: { $ne: true },
       }).sort({ appointmentDate: 1, appointmentTime: 1 });
     } else {
-      // Specialist doctors see only appointments assigned to them
+      // Specialist doctors see appointments assigned to them, OR appointments for patients assigned to their PG/UG students
+      const doctorIdentity = String(req.user?.Identity || '').trim();
+      const rawDoctorIdentity = String(req.user?.Identity || '');
+      
+      const GeneralCase = (await import('../models/GeneralCase.js')).default;
+      const doctorReferrals = await GeneralCase.find({
+        $or: [
+          { specialistDoctorId: doctorIdentity },
+          { specialistDoctorId: rawDoctorIdentity },
+          { specialistDoctorId: req.user._id },
+          { specialistDoctorId: String(req.user._id) },
+        ],
+        specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] }
+      }, { assignedPgId: 1 }).lean();
+
+      const pgIdentitiesFromReferrals = [...new Set(
+        doctorReferrals.map(r => String(r.assignedPgId || '').trim()).filter(Boolean)
+      )];
+      const pgRawIdentitiesFromReferrals = [...new Set(
+        doctorReferrals.map(r => String(r.assignedPgId || '')).filter(Boolean)
+      )];
+
+      const students = await User.find(
+        {
+          role: { $in: ['pg', 'ug'] },
+          $or: [
+            { createdBy: req.user._id },
+            { Identity: { $in: pgIdentitiesFromReferrals } },
+            { Identity: { $in: pgRawIdentitiesFromReferrals } },
+          ],
+        },
+        { Identity: 1, name: 1 }
+      ).lean();
+
+      const pgIdentityStrings = students.map(s => String(s.Identity || '').trim()).filter(Boolean);
+      const pgObjectIds = students.map(s => s._id).filter(Boolean);
+
+      let studentPatientIds = [];
+      if (pgIdentityStrings.length || pgObjectIds.length) {
+        const assignedCases = await GeneralCase.find(
+          {
+            specialistStatus: { $in: ['approved', 'pending', 'rescheduled'] },
+            $or: [
+              ...(pgIdentityStrings.length ? [{ assignedPgId: { $in: pgIdentityStrings } }] : []),
+              ...(pgObjectIds.length ? [{ assignedPgId: { $in: pgObjectIds } }] : []),
+            ],
+          },
+          { patientId: 1 }
+        ).lean();
+        studentPatientIds = [...new Set(
+          assignedCases.map(c => String(c.patientId || '').trim()).filter(Boolean)
+        )];
+      }
+
       appointments = await Appointment.find({
-        doctorId,
-        status: { $in: ["pending", "assigned", "in_progress", "rescheduled"] },
-        appointmentDate: { $gte: todayStr },
+        $or: [
+          { doctorId },
+          ...(doctorIdentity ? [
+            { doctorId: doctorIdentity },
+            { supervisingDeptDoctorId: doctorIdentity },
+            { supervising_dept_doctor_id: doctorIdentity }
+          ] : []),
+          ...(rawDoctorIdentity ? [
+            { doctorId: rawDoctorIdentity },
+            { supervisingDeptDoctorId: rawDoctorIdentity },
+            { supervising_dept_doctor_id: rawDoctorIdentity }
+          ] : []),
+          ...(studentPatientIds.length ? [{ patientId: { $in: studentPatientIds } }] : []),
+        ],
+        status: { $in: ["pending", "confirmed", "assigned", "in_progress", "rescheduled"] },
+        ...(showAll ? {} : { appointmentDate: { $gte: todayStr } }),
       }).sort({ appointmentDate: 1, appointmentTime: 1 });
     }
 
@@ -962,7 +1032,7 @@ router.get('/assigned-doctors/overview', auth, requireRole(['chief', 'chief-doct
       });
     }
 
-    // Query appointments by BOTH doctor _id and Identity formats
+    // Query appointments by BOTH doctor _id and Identity formats, as well as supervising doctor keys
     const doctorQueryKeys = Array.from(
       new Set(
         assignedDoctors
@@ -971,7 +1041,14 @@ router.get('/assigned-doctors/overview', auth, requireRole(['chief', 'chief-doct
       )
     );
 
-    const appointments = await Appointment.find({ doctorId: { $in: doctorQueryKeys } })
+    const appointments = await Appointment.find({
+      $or: [
+        { doctorId: { $in: doctorQueryKeys } },
+        { supervisingDeptDoctorId: { $in: doctorQueryKeys } },
+        { supervising_dept_doctor_id: { $in: doctorQueryKeys } },
+        { deptDoctorId: { $in: doctorQueryKeys } }
+      ]
+    })
       .sort({ appointmentDate: 1, appointmentTime: 1 })
       .lean();
 
@@ -986,7 +1063,7 @@ router.get('/assigned-doctors/overview', auth, requireRole(['chief', 'chief-doct
     });
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const activeStatuses = new Set(['pending', 'confirmed', 'rescheduled']);
+    const activeStatuses = new Set(['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled']);
 
     const doctorLookup = new Map(assignedDoctors.map((d) => [String(d._id), d]));
     const scheduledByDoctor = new Map();
@@ -994,8 +1071,23 @@ router.get('/assigned-doctors/overview', auth, requireRole(['chief', 'chief-doct
     const uniquePatientIds = new Set();
 
     appointments.forEach((appt) => {
-      const appointmentDoctorKey = String(appt.doctorId || '').trim();
-      const doctorKey = doctorKeyToCanonical.get(appointmentDoctorKey);
+      // Find which assigned doctor this appointment belongs to (checking supervisors first for escalated/assigned cases, then direct doctorId)
+      const supervisorKeys = [
+        String(appt.supervisingDeptDoctorId || '').trim(),
+        String(appt.supervising_dept_doctor_id || '').trim(),
+        String(appt.deptDoctorId || '').trim(),
+        String(appt.doctorId || '').trim()
+      ].filter(Boolean);
+
+      let doctorKey = null;
+      for (const key of supervisorKeys) {
+        const canonical = doctorKeyToCanonical.get(key);
+        if (canonical && doctorLookup.has(canonical)) {
+          doctorKey = canonical;
+          break;
+        }
+      }
+
       if (!doctorKey || !doctorLookup.has(doctorKey)) return;
 
       const status = String(appt.status || '').toLowerCase();
