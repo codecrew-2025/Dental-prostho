@@ -28,6 +28,8 @@ const UGDashboard = () => {
     conservative: '/conservative-dentistry',
     endodontics: '/conservative-dentistry',
     conservativedentistry: '/conservative-dentistry',
+    general: '/oral-medicine',
+    periodontics: '/casePortal?dept=periodontics',
   };
 
   const getCaseRouteForDepartment = (departmentValue) => {
@@ -348,6 +350,12 @@ const UGDashboard = () => {
     return complaint;
   };
 
+  const handleShowRejectionReason = (reason) => {
+    setMessageTitle('Reschedule Request Rejected');
+    setMessageContent(reason || 'No reason provided by doctor.');
+    setShowMessageBox(true);
+  };
+
   const extractApiErrorMessage = async (response, fallbackMessage) => {
     try {
       const raw = await response.text();
@@ -411,8 +419,8 @@ const UGDashboard = () => {
     list.sort((a, b) => {
       const dateA = String(a?.appointmentDate || '');
       const dateB = String(b?.appointmentDate || '');
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return String(a?.appointmentTime || '').localeCompare(String(b?.appointmentTime || ''));
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return String(b?.appointmentTime || '').localeCompare(String(a?.appointmentTime || ''));
     });
     return list;
   }, [pgAppointments]);
@@ -1232,7 +1240,7 @@ const UGDashboard = () => {
     const token = localStorage.getItem('token');
     const caseId = String(row?.caseId || '').trim();
     const departmentKey = String(row?.departmentKey || '').trim();
-    const routePath = departmentKeyToRoute[departmentKey];
+    const routePath = departmentKeyToRoute[departmentKey] || getCaseRouteForDepartment(row?.department || departmentKey);
 
     if (!token) {
       setPgCaseSheetHistoryError('Authentication token missing. Please log in again.');
@@ -2816,7 +2824,7 @@ const UGDashboard = () => {
 
                 {Array.isArray(pgCaseSheetHistory) && pgCaseSheetHistory.length > 0 && (
                   <div className="pg-assigned-cases-table-wrapper">
-                    <table className="pg-assigned-cases-table pg-history-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+                    <table className="pg-assigned-cases-table pg-history-table ug-dashboard-history-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                       <thead>
                         <tr>
                           <th>S.No</th>
@@ -2917,7 +2925,7 @@ const UGDashboard = () => {
                                         patientId,
                                         patientName,
                                       })}
-                                      disabled={!caseId || !departmentKeyToRoute[departmentKey]}
+                                      disabled={!caseId || !(departmentKeyToRoute[departmentKey] || getCaseRouteForDepartment(row?.department || departmentKey))}
                                     >
                                       Edit
                                     </button>
@@ -2955,7 +2963,7 @@ const UGDashboard = () => {
 
                 {Array.isArray(myUpcomingAppointments) && myUpcomingAppointments.length > 0 && (
                   <div className="pg-assigned-cases-table-wrapper">
-                    <table className="pg-assigned-cases-table" style={{ fontSize: '0.8em', tableLayout: 'fixed', width: '100%' }}>
+                    <table className="pg-assigned-cases-table ug-dashboard-appointments-table" style={{ fontSize: '0.8em', tableLayout: 'fixed', width: '100%' }}>
                       <thead>
                         <tr style={{ padding: '4px' }}>
                           <th style={{ padding: '6px 6px', textAlign: 'center' }}>S.No</th>
@@ -2973,14 +2981,10 @@ const UGDashboard = () => {
                           const isSubmitting = bookingId && rescheduleSubmittingBookingId === bookingId;
                           const appointmentStatus = String(appointment?.status || '').trim().toLowerCase();
                           const rescheduleReqStatus = String(appointment?.rescheduleRequest?.requestStatus || 'none').trim().toLowerCase();
-                          const hasPendingReschedule = rescheduleReqStatus === 'pending';
+                          const hasPendingReschedule = rescheduleReqStatus === 'pending' && Boolean(appointment?.rescheduleRequest?.proposedDate);
                           const hasApprovedReschedule = rescheduleReqStatus === 'approved';
                           const isAssignedAppointment = appointmentStatus === 'assigned' || appointmentStatus === 'in_progress';
-                          
-                          // 🔥 FIX: Appointments are auto-confirmed, so they should show as confirmed
-                          const isConfirmed = appointmentStatus === 'confirmed' || appointmentStatus === 'rescheduled';
-                          const canConfirmAppointment = appointmentStatus === 'assigned';
-                          const canRescheduleAppointment = isAssignedAppointment && !hasPendingReschedule;
+                          const hasDoctorAssigned = appointment?.doctorId || appointment?.doctorName;
 
                           return (
                             <tr key={bookingId || `${appointment?.patientId}-${appointment?.appointmentDate}`} className="pg-assigned-row">
@@ -3012,39 +3016,154 @@ const UGDashboard = () => {
                               >
                                 {formatAppointmentComplaintDisplay(appointment?.chiefComplaint) || '—'}
                               </td>
-                              <td style={{ padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  <div style={{ display: 'inline-flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center', alignItems: 'center' }}>
-                                    <button
-                                      type="button"
-                                      className="view-button"
-                                      onClick={() => approveAppointment(appointment)}
-                                      disabled={!canConfirmAppointment || isSubmitting}
-                                      style={{
-                                        backgroundColor: '#4CAF50',
-                                        cursor: isSubmitting || !canConfirmAppointment ? 'not-allowed' : 'pointer',
-                                        padding: '4px 6px',
-                                        fontSize: '0.75em',
-                                        minWidth: '70px',
-                                        whiteSpace: 'nowrap',
-                                      }}
-                                    >
-                                      {isSubmitting ? 'Saving...' : 'Approve'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="view-button"
-                                      onClick={() => beginRescheduleForAppointment(appointment)}
-                                      disabled={isSubmitting || !canRescheduleAppointment}
-                                      style={{
-                                        padding: '4px 6px',
-                                        fontSize: '0.75em',
-                                        minWidth: '78px',
-                                        whiteSpace: 'nowrap',
-                                      }}
-                                    >
-                                        {isSubmitting ? 'Saving...' : 'Reschedule'}
-                                    </button>
-                                  </div>
+                              <td>
+                                <div className="pg-premium-action-cell">
+                                  {appointment?.patientRescheduleStatus === 'rejected' ? (
+                                    <div className="pg-premium-action-cell" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                      <span className="patient-rejected-text" style={{ color: '#e53e3e', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', whiteSpace: 'normal', display: 'block' }}>
+                                        Patient rejected the reschedule
+                                      </span>
+                                      <div className="pg-premium-action-row" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-approve"
+                                          onClick={() => approveAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          {isSubmitting ? '...' : 'Accept'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : appointmentStatus === 'confirmed' || appointmentStatus === 'assigned' || appointmentStatus === 'in_progress' || appointmentStatus === 'rescheduled' ? (
+                                    <div className="pg-premium-action-row">
+                                      <span className="pg-premium-badge badge-green">✓ Accepted</span>
+                                      {hasPendingReschedule ? (
+                                        <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : appointmentStatus === 'pending' ? (
+                                    hasDoctorAssigned ? (
+                                      <div className="pg-premium-action-row">
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-approve"
+                                          onClick={() => approveAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          {isSubmitting ? '...' : 'Accept'}
+                                        </button>
+                                        {hasPendingReschedule ? (
+                                          <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="pg-premium-btn btn-reschedule"
+                                            onClick={() => beginRescheduleForAppointment(appointment)}
+                                            disabled={isSubmitting}
+                                          >
+                                            Reschedule
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="pg-premium-action-row">
+                                        {hasPendingReschedule ? (
+                                          <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="pg-premium-btn btn-reschedule"
+                                            onClick={() => beginRescheduleForAppointment(appointment)}
+                                            disabled={isSubmitting}
+                                          >
+                                            Reschedule
+                                          </button>
+                                        )}
+                                        <span className="pg-premium-badge badge-orange">Pending</span>
+                                      </div>
+                                    )
+                                  ) : appointmentStatus === 'reschedule_requested' ? (
+                                    rescheduleReqStatus === 'pending' ? (
+                                      <div className="pg-premium-action-row">
+                                        <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                      </div>
+                                    ) : rescheduleReqStatus === 'rejected' ? (
+                                      <div className="pg-premium-action-cell" style={{ gap: '6px', width: '100%' }}>
+                                        <span
+                                          className="pg-premium-badge badge-red"
+                                          onClick={() => handleShowRejectionReason(appointment?.rescheduleRequest?.reason)}
+                                          title="Click to view rejection reason"
+                                          style={{ cursor: 'pointer' }}
+                                        >
+                                          Reschedule Rejected ℹ
+                                        </span>
+                                        <div className="pg-premium-action-row">
+                                          <button
+                                            type="button"
+                                            className="pg-premium-btn btn-reschedule"
+                                            onClick={() => beginRescheduleForAppointment(appointment)}
+                                            disabled={isSubmitting}
+                                          >
+                                            Reschedule
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="pg-premium-action-row">
+                                        {hasPendingReschedule ? (
+                                          <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="pg-premium-btn btn-reschedule"
+                                            onClick={() => beginRescheduleForAppointment(appointment)}
+                                            disabled={isSubmitting}
+                                          >
+                                            Reschedule
+                                          </button>
+                                        )}
+                                        <span className="pg-premium-badge badge-gray">
+                                          {appointment?.status || 'Pending'}
+                                        </span>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <div className="pg-premium-action-row">
+                                      {hasPendingReschedule ? (
+                                        <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="pg-premium-btn btn-reschedule"
+                                          onClick={() => beginRescheduleForAppointment(appointment)}
+                                          disabled={isSubmitting}
+                                        >
+                                          Reschedule
+                                        </button>
+                                      )}
+                                      <span className="pg-premium-badge badge-gray">
+                                        {appointment?.status || 'Pending'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );

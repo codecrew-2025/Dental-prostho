@@ -3,14 +3,79 @@ import { useAuth } from "./context/AuthContext";
 import "./caseHistory.css";
 import { API_BASE_URL } from "../config/api";
 
+const DEPARTMENT_ENDPOINTS = {
+  "Oral Medicine and Radiology": [
+    { url: "/api/oral/patient/", department: "Oral Medicine and Radiology" },
+    { url: "/api/general/patient/", department: "General" },
+  ],
+  "Pedodontics": [
+    { url: "/api/pedodontics/patient/", department: "Pedodontics" },
+    { url: "/api/general/patient/", department: "General" },
+  ],
+  "Prosthodontics": [
+    { url: "/api/fpd/patient/", department: "FPD" },
+    { url: "/api/implant/patient/", department: "Implant" },
+    { url: "/api/ImplantPatient/patient/", department: "Implant Patient Surgery" },
+    { url: "/api/partial/patient/", department: "Partial Denture" },
+    { url: "/api/complete-denture/patient/", department: "Complete Denture" },
+    { url: "/api/general/patient/", department: "General" },
+  ],
+  "Conservative Dentistry and Endodontics": [
+    { url: "/api/conservative/patient/", department: "Conservative Dentistry" },
+    { url: "/api/general/patient/", department: "General" },
+  ],
+  "Periodontics": [
+    { url: "/api/general/patient/", department: "General" },
+  ],
+  "Oral and Maxillofacial Surgery": [
+    { url: "/api/general/patient/", department: "General" },
+  ],
+};
+
+const ALL_ENDPOINTS = [
+  { url: "/api/pedodontics/patient/", department: "Pedodontics" },
+  { url: "/api/complete-denture/patient/", department: "Complete Denture" },
+  { url: "/api/fpd/patient/", department: "FPD" },
+  { url: "/api/implant/patient/", department: "Implant" },
+  { url: "/api/ImplantPatient/patient/", department: "Implant Patient Surgery" },
+  { url: "/api/partial/patient/", department: "Partial Denture" },
+  { url: "/api/oral/patient/", department: "Oral Medicine and Radiology" },
+  { url: "/api/general/patient/", department: "General" },
+];
+
 const CaseHistory = () => {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [patientInfo, setPatientInfo] = useState(null);
+  const [departmentFilter, setDepartmentFilter] = useState("auto");
   const { user } = useAuth();
   const buildApiUrl = (path) =>
     `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const getUserDepartment = () => {
+    const dept = user?.department
+      || localStorage.getItem("pgDepartment")
+      || localStorage.getItem("doctorDepartment")
+      || localStorage.getItem("ugDepartment")
+      || "";
+    return dept.trim();
+  };
+
+  const getEndpointsForFilter = (filter, userDept) => {
+    if (filter === "all") return ALL_ENDPOINTS;
+    if (filter === "auto" && userDept) {
+      const normalizedDept = userDept.toLowerCase().replace(/[\s_]+/g, "");
+      for (const [key, endpoints] of Object.entries(DEPARTMENT_ENDPOINTS)) {
+        const normalizedKey = key.toLowerCase().replace(/[\s_]+/g, "");
+        if (normalizedDept.includes(normalizedKey) || normalizedKey.includes(normalizedDept)) {
+          return endpoints;
+        }
+      }
+    }
+    if (DEPARTMENT_ENDPOINTS[filter]) return DEPARTMENT_ENDPOINTS[filter];
+    return ALL_ENDPOINTS;
+  };
 
   useEffect(() => {
     const patientId = localStorage.getItem("CurrentpatientId");
@@ -18,51 +83,55 @@ const CaseHistory = () => {
 
     if (patientId && patientName) {
       setPatientInfo({ id: patientId, name: patientName });
-      fetchDoctorPatientCases(patientId, user?.id);
+      fetchCases(patientId, departmentFilter);
     } else {
       setError("No patient selected. Please select a patient first.");
       setLoading(false);
     }
   }, [user?.id]);
 
-  const fetchDoctorPatientCases = async (patientId, doctorId) => {
+  useEffect(() => {
+    if (patientInfo?.id) {
+      fetchCases(patientInfo.id, departmentFilter);
+    }
+  }, [departmentFilter]);
+
+  const fetchCases = async (patientId, filter) => {
     try {
       setLoading(true);
       setError("");
 
       const token = localStorage.getItem("token");
-      const endpoints = [
-        { url: buildApiUrl(`/api/pedodontics/patient/${encodeURIComponent(patientId)}`), department: "Pedodontics" },
-        { url: buildApiUrl(`/api/complete-denture/patient/${encodeURIComponent(patientId)}`), department: "Complete Denture" },
-        { url: buildApiUrl(`/api/fpd/patient/${encodeURIComponent(patientId)}`), department: "FPD" },
-        { url: buildApiUrl(`/api/implant/patient/${encodeURIComponent(patientId)}`), department: "Implant" },
-        { url: buildApiUrl(`/api/ImplantPatient/patient/${encodeURIComponent(patientId)}`), department: "Implant Patient Surgery" },
-        { url: buildApiUrl(`/api/partial/patient/${encodeURIComponent(patientId)}`), department: "Partial Denture" },
-        { url: buildApiUrl(`/api/oral/patient/${encodeURIComponent(patientId)}`), department: "Oral Medicine and Radiology" },
-        { url: buildApiUrl(`/api/general/patient/${encodeURIComponent(patientId)}`), department: "General" },
-      ];
+      const userDept = getUserDepartment();
+      const endpoints = getEndpointsForFilter(filter, userDept);
 
       const results = await Promise.all(
         endpoints.map(async ({ url, department }) => {
-          const res = await fetch(url, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          });
+          try {
+            const res = await fetch(buildApiUrl(`${url}${encodeURIComponent(patientId)}`), {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            });
 
-          const text = await res.text();
-          const parsed = text ? JSON.parse(text) : null;
+            if (!res.ok) return [];
 
-          if (parsed?.data && Array.isArray(parsed.data)) {
-            return parsed.data.map((item) => ({ department, ...item }));
+            const text = await res.text();
+            const parsed = text ? JSON.parse(text) : null;
+
+            if (parsed?.data && Array.isArray(parsed.data)) {
+              return parsed.data.map((item) => ({ department, ...item }));
+            }
+
+            if (Array.isArray(parsed)) {
+              return parsed.map((item) => ({ department, ...item }));
+            }
+
+            return [];
+          } catch {
+            return [];
           }
-
-          if (Array.isArray(parsed)) {
-            return parsed.map((item) => ({ department, ...item }));
-          }
-
-          return [];
         })
       );
 
@@ -104,7 +173,6 @@ const CaseHistory = () => {
 
         const caseId = caseItem?._id;
 
-        // Prefer case-linked prescriptions (per-case-sheet) when possible
         if (caseId) {
           const resByCase = await fetch(buildApiUrl(`/api/prescriptions/case/${encodeURIComponent(caseId)}?page=1&limit=1`), {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
@@ -140,7 +208,6 @@ const CaseHistory = () => {
           }
         }
 
-        // fallback to creation page
         window.open('/prescriptions', '_blank');
       } catch (err) {
         console.error('Error opening prescription view from case history:', err);
@@ -176,9 +243,7 @@ const CaseHistory = () => {
           <div className="error-message">
             {error}
             <button
-              onClick={() =>
-                fetchDoctorPatientCases(patientInfo.id, user?.id)
-              }
+              onClick={() => fetchCases(patientInfo.id, departmentFilter)}
             >
               Retry
             </button>

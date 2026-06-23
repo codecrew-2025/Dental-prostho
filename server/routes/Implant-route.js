@@ -132,7 +132,7 @@ router.post('/save', auth, requireRole(['doctor','chief','pg','ug']), upload.sin
  * @desc    Get all Implant case sheets for chief review
  * @access  Private (Chief Doctor)
  */
-router.get('/chief/all-cases', auth, requireRole(['doctor','chief']), async (req, res) => {
+router.get('/chief/all-cases', auth, requireRole(['doctor','chief','chief-doctor']), async (req, res) => {
   try {
     if (!hasChiefDepartmentAccess(req.user, ['prosthodontics', 'implantology', 'implant'])) {
       return chiefDepartmentAccessDenied(res);

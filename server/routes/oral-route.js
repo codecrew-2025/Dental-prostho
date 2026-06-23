@@ -94,10 +94,19 @@ router.get('/doctor/:doctorId', auth, async (req, res) => {
 });
 
 // ── GET ALL FOR CHIEF ─────────────────────────────────────────────────────
-router.get('/chief/all-cases', auth, requireRole('chief_doctor'), async (req, res) => {
+router.get('/chief/all-cases', auth, requireRole(['doctor', 'chief', 'chief-doctor']), async (req, res) => {
   try {
-    const cases = await OralCase.find().sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: cases });
+    const { default: GeneralCase } = await import('../models/GeneralCase.js');
+
+    const [oralCases, generalCases] = await Promise.all([
+      OralCase.find().sort({ createdAt: -1 }).lean(),
+      GeneralCase.find().sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const allCases = [...generalCases.map(c => ({ ...c, department: c.department || 'General' })), ...oralCases];
+    allCases.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    res.status(200).json({ success: true, data: allCases });
   } catch (error) {
     console.error('Error fetching all oral cases:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch oral cases', error: error.message });

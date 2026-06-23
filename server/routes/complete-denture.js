@@ -320,7 +320,7 @@ router.patch('/:caseId/approve', auth, requireRole(['doctor','chief']), async (r
 // ============================================
 // GET ALL CASES FOR CHIEF
 // ============================================
-router.get('/chief/all-cases', auth, requireRole(['doctor','chief']), async (req, res) => {
+router.get('/chief/all-cases', auth, requireRole(['doctor','chief','chief-doctor']), async (req, res) => {
   try {
     if (!hasChiefDepartmentAccess(req.user, ['prosthodontics', 'completedenture'])) {
       return chiefDepartmentAccessDenied(res);

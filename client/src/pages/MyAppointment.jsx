@@ -10,7 +10,19 @@ const MyAppointment = () => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingRescheduleModalAppt, setPendingRescheduleModalAppt] = useState(null);
   const patientId = getStoredPatientId();
+
+  useEffect(() => {
+    if (Array.isArray(appointments)) {
+      const pending = appointments.find(a => a.patientRescheduleStatus === 'pending');
+      if (pending) {
+        setPendingRescheduleModalAppt(pending);
+      } else {
+        setPendingRescheduleModalAppt(null);
+      }
+    }
+  }, [appointments]);
 
   const buildApiUrl = (path) =>
     `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
@@ -119,6 +131,54 @@ const MyAppointment = () => {
     }
   };
 
+  const handlePatientApproveReschedule = async (bookingId) => {
+    try {
+      const response = await fetch(
+        buildApiUrl(`/api/appointment/${bookingId}/patient/approve`),
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        alert("Rescheduled appointment confirmed.");
+        fetchAppointments();
+      } else {
+        alert(data.message || "Failed to approve reschedule.");
+      }
+    } catch (error) {
+      console.error("Error approving reschedule:", error);
+      alert("Error approving reschedule. Please try again.");
+    }
+  };
+
+  const handlePatientRejectReschedule = async (bookingId) => {
+    try {
+      const response = await fetch(
+        buildApiUrl(`/api/appointment/${bookingId}/patient/reject`),
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        alert("Rescheduled appointment rejected. Reverted to the original schedule.");
+        fetchAppointments();
+      } else {
+        alert(data.message || "Failed to reject reschedule.");
+      }
+    } catch (error) {
+      console.error("Error rejecting reschedule:", error);
+      alert("Error rejecting reschedule. Please try again.");
+    }
+  };
+
   const getStatusTag = (status, appointmentDate, appointmentTime) => {
     try {
       const now = new Date();
@@ -212,7 +272,7 @@ const MyAppointment = () => {
           <tbody>
             {appointments.map((a, index) => {
               const isFuture = isFutureAppointment(a.appointmentDate, a.appointmentTime);
-              const canAction = isFuture && a.status !== "cancelled" && a.status !== "completed";
+              const canAction = (isFuture || a.patientRescheduleStatus === 'pending') && a.status !== "cancelled" && a.status !== "completed";
 
               return (
                 <tr key={a.bookingId}>
@@ -225,10 +285,31 @@ const MyAppointment = () => {
                   </td>
                   <td>{a.chiefComplaint}</td>
                   <td>
-                    {getStatusTag(a.status, a.appointmentDate, a.appointmentTime)}
+                    {a.patientRescheduleStatus === 'pending' ? (
+                      <span className="status-tag status-rescheduled">Rescheduled • Action Required</span>
+                    ) : (
+                      getStatusTag(a.status, a.appointmentDate, a.appointmentTime)
+                    )}
                   </td>
                   <td>
-                    {canAction ? (
+                    {a.patientRescheduleStatus === 'pending' ? (
+                      <div className="action-buttons">
+                        <button
+                          className="btn-approve-reschedule"
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', minWidth: '70px' }}
+                          onClick={() => handlePatientApproveReschedule(a.bookingId)}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn-reject-reschedule"
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', minWidth: '70px' }}
+                          onClick={() => handlePatientRejectReschedule(a.bookingId)}
+                        >
+                          Reschedule
+                        </button>
+                      </div>
+                    ) : canAction ? (
                       <div className="action-buttons">
                         <button
                           className="btn-reschedule"
@@ -282,6 +363,54 @@ const MyAppointment = () => {
         <h1>My Appointments</h1>
         {renderContent()}
       </main>
+
+      {pendingRescheduleModalAppt && (
+        <div className="reschedule-modal-overlay">
+          <div className="reschedule-modal-content">
+            <h2>Appointment Rescheduled</h2>
+            <p>
+              Your appointment (ID: <strong>{pendingRescheduleModalAppt.bookingId}</strong>) has been rescheduled by the doctor/PG to a new date and time.
+            </p>
+            <div className="reschedule-details">
+              <div className="detail-item">
+                <span className="detail-label">New Date & Time:</span>
+                <span className="detail-value">
+                  {pendingRescheduleModalAppt.appointmentDate} at {pendingRescheduleModalAppt.appointmentTime}
+                </span>
+              </div>
+              {pendingRescheduleModalAppt.originalDate && (
+                <div className="detail-item original">
+                  <span className="detail-label">Original Date & Time:</span>
+                  <span className="detail-value">
+                    {pendingRescheduleModalAppt.originalDate} at {pendingRescheduleModalAppt.originalTime}
+                  </span>
+                </div>
+              )}
+            </div>
+            <p className="reschedule-prompt">Do you accept this new schedule?</p>
+            <div className="modal-actions">
+              <button
+                className="btn-approve-reschedule"
+                onClick={() => {
+                  handlePatientApproveReschedule(pendingRescheduleModalAppt.bookingId);
+                  setPendingRescheduleModalAppt(null);
+                }}
+              >
+                Approve
+              </button>
+              <button
+                className="btn-reject-reschedule"
+                onClick={() => {
+                  handlePatientRejectReschedule(pendingRescheduleModalAppt.bookingId);
+                  setPendingRescheduleModalAppt(null);
+                }}
+              >
+                Reschedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -17,6 +17,7 @@ import DoctorSchedule from './pages/DoctorSchedules';
 import CasePortal from './pages/casePortal';
 import Pedodontics from './pages/departments/Pedodontics';
 import OralMedicine from './pages/departments/OralMedicine';
+import OralMedicineDashboard from './pages/OralMedicineDashboard';
 import ImplantPatient from './pages/departments/prosthodontics/ImplantPatient';
 import { AuthProvider, useAuth } from './pages/context/AuthContext';
 import ProtectedRoute from './pages/context/ProtectedRoute';
@@ -331,6 +332,17 @@ const AppRoutes = () => {
               allowedRoles={['doctor', 'chief', 'chief-doctor', 'pg', 'ug']}
             >
               <OralMedicine />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/oral-medicine-dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={['doctor', 'chief', 'chief-doctor', 'pg', 'ug']}
+              allowedDepartments={['general', 'generaldentistry', 'oral', 'oralandmaxillofacial', 'oralandmaxillofacialsurgery', 'oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology']}
+            >
+              <OralMedicineDashboard />
             </ProtectedRoute>
           }
         />

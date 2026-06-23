@@ -1,0 +1,411 @@
+.oral-medicine-dashboard {
+  min-height: 100vh;
+  background: #f0f2f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Header */
+.oral-medicine-header {
+  background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%);
+  color: white;
+  padding: 16px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.oral-medicine-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.oral-medicine-logo img {
+  height: 40px;
+  width: auto;
+}
+
+.oral-medicine-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.oral-medicine-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.oral-medicine-header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.oral-medicine-date {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.oral-medicine-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  color: white;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.oral-medicine-user-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Main content */
+.oral-medicine-main {
+  padding: 24px 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Error bar */
+.oral-medicine-error {
+  background: #ffebee;
+  border: 1px solid #ef9a9a;
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  color: #c62828;
+  font-size: 0.95rem;
+}
+
+/* Stats */
+.oral-medicine-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.stat-icon.total { background: #e3f2fd; }
+.stat-icon.pending { background: #fff3e0; }
+.stat-icon.confirmed { background: #e8f5e9; }
+.stat-icon.completed { background: #f3e5f5; }
+
+.stat-info h3 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #1a237e;
+}
+
+.stat-info p {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* Toolbar */
+.oral-medicine-toolbar {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 250px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.toolbar-search-icon {
+  font-size: 1rem;
+}
+
+.toolbar-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.toolbar-filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar-filter select,
+.toolbar-filter input[type="date"] {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: white;
+  cursor: pointer;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-refresh {
+  padding: 10px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.btn-refresh:hover {
+  background: #f5f5f5;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Auto-refresh badge */
+.auto-refresh-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #66bb6a;
+  background: #e8f5e9;
+  padding: 4px 12px;
+  border-radius: 20px;
+  width: 100%;
+}
+
+.auto-refresh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #66bb6a;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Table container */
+.oral-medicine-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+/* Loading state */
+.oral-medicine-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 16px;
+}
+
+.oral-medicine-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #1a237e;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.oral-medicine-loading p {
+  color: #666;
+  font-size: 1rem;
+}
+
+/* Empty state */
+.oral-medicine-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.oral-medicine-empty h3 {
+  margin: 0 0 8px;
+  color: #333;
+}
+
+/* Table */
+.oral-medicine-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.oral-medicine-table thead {
+  background: #f8f9fa;
+}
+
+.oral-medicine-table th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e0e0e0;
+  white-space: nowrap;
+}
+
+.oral-medicine-table td {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.oral-medicine-table tbody tr:hover {
+  background: #f5f7ff;
+}
+
+/* Status badge */
+.oral-medicine-table .status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.oral-medicine-table .status-badge.pending {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.oral-medicine-table .status-badge.confirmed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.oral-medicine-table .status-badge.completed {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.oral-medicine-table .status-badge.cancelled {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.oral-medicine-table .status-badge.rescheduled {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.oral-medicine-table .status-badge.assigned {
+  background: #e0f7fa;
+  color: #00695c;
+}
+
+.oral-medicine-table .status-badge.in_progress {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .oral-medicine-header {
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .oral-medicine-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .oral-medicine-main {
+    padding: 16px;
+  }
+
+  .oral-medicine-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .oral-medicine-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-search {
+    min-width: auto;
+  }
+
+  .toolbar-filter {
+    flex-wrap: wrap;
+  }
+
+  .oral-medicine-table-container {
+    overflow-x: auto;
+  }
+}

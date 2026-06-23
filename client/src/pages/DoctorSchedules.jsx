@@ -8,7 +8,7 @@ const DoctorSchedule = () => {
   const storedRole = (localStorage.getItem("role") || "").toLowerCase();
   const isDoctorOnly = storedRole === "doctor";
   const canManageAppointments = storedRole === "doctor" || storedRole === "chief-doctor";
-  const [viewMode, setViewMode] = useState(isDoctorOnly ? "my" : "all"); // 'all' | 'my'
+  const [viewMode, setViewMode] = useState("all"); // Always 'all' for every role
   const [showModal, setShowModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [selectedDate, setSelectedDate] = useState("");
@@ -104,9 +104,9 @@ const DoctorSchedule = () => {
       const token = getToken();
       if (!token) return showMessage("Login required", "error");
 
-      const effectiveMode = isDoctorOnly ? "my" : mode;
-      if (effectiveMode !== mode && viewMode !== "my") {
-        setViewMode("my");
+      const effectiveMode = "all";
+      if (viewMode !== "all") {
+        setViewMode("all");
       }
 
       const url =
@@ -138,7 +138,7 @@ const DoctorSchedule = () => {
   };
 
   useEffect(() => {
-    fetchAppointments(isDoctorOnly ? "my" : "all");
+    fetchAppointments("all");
   }, []);
 
   /* ================= APPROVE ================= */
@@ -254,40 +254,16 @@ const DoctorSchedule = () => {
           />
           <h1>SRM DENTAL COLLEGE</h1>
           <h2 className="subtitle" style={{ color: "black" }}>
-            {viewMode === "all" ? "All Appointments" : "My Appointments"}
+            All Appointments
           </h2>
-          <div className="view-toggle">
-            {!isDoctorOnly && (
-              <>
-                <button
-                  className={viewMode === "all" ? "active" : ""}
-                  onClick={() => {
-                    setViewMode("all");
-                    fetchAppointments("all");
-                  }}
-                >
-                  All
-                </button>
-                <button
-                  className={viewMode === "my" ? "active" : ""}
-                  onClick={() => {
-                    setViewMode("my");
-                    fetchAppointments("my");
-                  }}
-                >
-                  My
-                </button>
-              </>
-            )}
-          </div>
         </div>
 
         <table className="appointments-table">
           <thead>
             <tr>
               <th>S.No</th>
-              <th>Patient Name</th>
               <th>Patient ID</th>
+              <th>Patient Name</th>
               <th>Email</th>
               <th>Date & Time</th>
               <th>Complaint</th>
@@ -298,9 +274,7 @@ const DoctorSchedule = () => {
             {appointments.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ textAlign: "center", padding: "16px", color: "#6b7280" }}>
-                  {viewMode === "my"
-                    ? "No upcoming appointments found."
-                    : "No appointments found."}
+                  No appointments found.
                 </td>
               </tr>
             )}

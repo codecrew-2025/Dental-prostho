@@ -2,6 +2,8 @@
 import dns from "node:dns";
 import mongoose from "mongoose";
 
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 const SRV_DNS_ERROR_CODES = new Set(["ECONNREFUSED", "EAI_AGAIN", "ENOTFOUND", "ETIMEOUT"]);
 const DEFAULT_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
 const CACHE_KEY = "__srmMongoCache";

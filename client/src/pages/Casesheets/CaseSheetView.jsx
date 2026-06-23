@@ -5,9 +5,10 @@ import ImplantView from "./Implantview";
 import PartialView from "./Partialview";
 import ImplantPatientView from "./ImplantPatientView";
 import ConservativeView from "./ConservativeView";
+import OralMedicineView from "./OralMedicineView";
 
 const CaseSheetView = ({ caseSheet }) => {
-  switch (caseSheet.department) {
+  switch ((caseSheet.department || '').toLowerCase()) {
     case "pedodontics":
       return <PedodonticsView caseData={caseSheet} />;
 
@@ -28,8 +29,16 @@ const CaseSheetView = ({ caseSheet }) => {
       return <PartialView caseData={caseSheet} />;
 
     case "conservativedentistryandendodontics":
-    case "Conservative Dentistry and Endodontics":
+    case "conservative dentistry and endodontics":
       return <ConservativeView caseData={caseSheet} />;
+
+    case "general":
+    case "generaldentistry":
+    case "oral":
+    case "oralmedicine":
+    case "oralmedicineandradiology":
+    case "oralmedicineradiology":
+      return <OralMedicineView caseData={caseSheet} />;
 
     default:
       return <p>Department not supported</p>;

@@ -124,7 +124,7 @@ const sortUsersForAssignment = (users) => {
 const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
   const aliases = getDepartmentAliases(departmentLabel);
   const doctors = await User.find(
-    { role: 'doctor' },
+    { role: 'doctor', createdBy: { $ne: null } },
     { _id: 1, name: 1, Identity: 1, department: 1 }
   ).lean();
 
@@ -145,7 +145,7 @@ const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
 
 const pickPgForDoctor = async (doctor) => {
   const students = await User.find(
-    { role: { $in: ['pg', 'ug'] }, department: doctor.department },
+    { role: { $in: ['pg', 'ug'] }, createdBy: doctor._id },
     { _id: 1, name: 1, Identity: 1, department: 1, role: 1 }
   ).lean();
 
@@ -211,30 +211,22 @@ const assignReferralToPg = async (caseItem, preferredSpecialistDoctor = null) =>
     return { specialistDoctor: null, assignedPg: null };
   }
 
-  let assignedPg = await findPgByIdentity(caseItem?.assignedPgId);
-  if (!assignedPg?._id) {
-    assignedPg = await pickPgForDoctor(specialistDoctor);
-  }
-
-  if (!assignedPg?._id) {
-    return { specialistDoctor, assignedPg: null };
-  }
-
+  // The user requested manual approval for department referrals.
+  // We assign the specialist doctor but leave the PG assignment empty and status 'pending'
+  // so the department can manually approve and assign a PG.
   const assignmentTimestamp = new Date();
 
   caseItem.referredDepartment = referredDepartment;
   caseItem.specialistDoctorId = specialistDoctor.Identity || '';
   caseItem.specialistDoctorName = specialistDoctor.name || '';
   caseItem.specialistAssignedAt = caseItem.specialistAssignedAt || assignmentTimestamp;
-  caseItem.specialistStatus = 'approved';
+  caseItem.specialistStatus = 'pending';
   caseItem.specialistRescheduleReason = '';
-  caseItem.specialistReviewedBy = 'System Auto-Transfer';
-  caseItem.specialistReviewedAt = assignmentTimestamp;
-  caseItem.assignedPgId = assignedPg.Identity || '';
-  caseItem.assignedPgName = assignedPg.name || assignedPg.Identity || '';
-  caseItem.pgAssignedAt = caseItem.pgAssignedAt || assignmentTimestamp;
+  caseItem.specialistReviewedBy = '';
+  caseItem.assignedPgId = '';
+  caseItem.assignedPgName = '';
 
-  return { specialistDoctor, assignedPg };
+  return { specialistDoctor, assignedPg: null };
 };
 
 const autoTransferPendingReferralsToPgQueue = async () => {
@@ -348,10 +340,10 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
     const requesterRole = normalizeRole(req.user?.role);
     const requesterDepartment = normalizeDepartment(req.user?.department);
 
-    if (requesterRole === 'doctor' && !GENERAL_DEPARTMENT_KEYS.has(requesterDepartment)) {
+    if (requesterRole === 'doctor') {
       return res.status(403).json({
         success: false,
-        message: 'Only general doctors can create referral case sheets.'
+        message: 'Doctors cannot create referral case sheets. Only PGs/UGs can create referrals after filling the Oral Medicine case sheet.'
       });
     }
 
@@ -472,12 +464,8 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
     if (!publicHealthCase) {
       const result = await assignReferralToPg(generalCase, specialistDoctor);
       assignedPg = result.assignedPg;
-      if (!assignedPg?._id) {
-        return res.status(409).json({
-          success: false,
-          message: `No PG is assigned under ${specialistDoctor?.name || referredDepartment}. Assign a PG before saving this referral.`,
-        });
-      }
+      // We no longer require a PG to be assigned immediately since referrals require manual approval
+
       console.log(`✅ GeneralCase created for patient ${patientId}:`);
       console.log(`   - assignedPgId: ${generalCase.assignedPgId}`);
       console.log(`   - specialistDoctorId: ${generalCase.specialistDoctorId}`);
@@ -490,24 +478,58 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
     // 🔥 FIX: Mark the appointment as ASSIGNED and update PG/UG assignment fields
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const recentAppointment = await Appointment.findOne({
+      const pgIdentity = String(req.user?.Identity || '').trim();
+
+      // First try to find the appointment directly assigned to this PG/UG
+      let recentAppointment = pgIdentity ? await Appointment.findOne({
+        $or: [
+          { assigned_pg_ug_id: pgIdentity },
+          { assignedPgUgId: pgIdentity },
+          { pgDoctorId: pgIdentity },
+          { doctorId: pgIdentity },
+        ],
         patientId,
         appointmentDate: { $gte: todayStr },
-        status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
+        status: { $nin: ['cancelled', 'completed', 'closed'] },
         isProcessed: { $ne: true },
-      }).sort({ appointmentDate: 1, createdAt: -1 });
+      }).sort({ createdAt: -1 }) : null;
+
+      // Fallback: find any unprocessed upcoming appointment for this patient in the same department
+      if (!recentAppointment) {
+        const userDepartment = String(req.user?.department || '').trim();
+        const normalizedUserDept = normalizeDepartment(userDepartment);
+        recentAppointment = await Appointment.findOne({
+          patientId,
+          appointmentDate: { $gte: todayStr },
+          status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
+          isProcessed: { $ne: true },
+        }).sort({ createdAt: -1 });
+
+        // If found but department doesn't match, skip it
+        if (recentAppointment && normalizedUserDept) {
+          const apptDeptKey = normalizeLabelToDepartmentKey(recentAppointment.currentDepartment || '');
+          const userDeptKey = normalizeLabelToDepartmentKey(userDepartment);
+          if (apptDeptKey && userDeptKey && apptDeptKey !== userDeptKey) {
+            recentAppointment = null;
+          }
+        }
+      }
 
       if (recentAppointment) {
-        recentAppointment.status = 'assigned'; // ASSIGNED - case sheet submitted, PG assigned
-        recentAppointment.isProcessed = true;
-        recentAppointment.doctorId = assignedPg?.Identity || assignedPg?._id || ''; // Set PG as doctorId
+        recentAppointment.status = 'pending'; // PENDING - needs manual approval in the new department
+        recentAppointment.isProcessed = false;
+        recentAppointment.doctorId = assignedPg?.Identity || assignedPg?._id || '';
         recentAppointment.assignedPgUgId = assignedPg?.Identity || '';
-        recentAppointment.assigned_pg_ug_id = assignedPg?.Identity || ''; // Set PG assignment
-        recentAppointment.pgDoctorId = assignedPg?.Identity || ''; // Alternative field
+        recentAppointment.assigned_pg_ug_id = assignedPg?.Identity || '';
+        recentAppointment.pgDoctorId = assignedPg?.Identity || '';
         recentAppointment.supervisingDeptDoctorId = specialistDoctor?.Identity || '';
-        recentAppointment.supervising_dept_doctor_id = specialistDoctor?.Identity || ''; // Set dept doctor
-        recentAppointment.deptDoctorId = specialistDoctor?.Identity || ''; // Alternative field
-        recentAppointment.generalDoctorId = req.user.Identity || ''; // Set general doctor ID
+        recentAppointment.supervising_dept_doctor_id = specialistDoctor?.Identity || '';
+        recentAppointment.deptDoctorId = specialistDoctor?.Identity || '';
+        recentAppointment.generalDoctorId = req.user.Identity || '';
+        // Move appointment to the referred department so all in that dept can see it
+        if (referredDepartment) {
+          recentAppointment.currentDepartment = referredDepartment;
+        }
         await recentAppointment.save();
         console.log(`✅ Marked appointment ${recentAppointment.bookingId} as ASSIGNED for patient ${patientId}`);
         console.log(`✅ Assigned PG ${assignedPg?.Identity} and Dept Doctor ${specialistDoctor?.Identity} to appointment`);

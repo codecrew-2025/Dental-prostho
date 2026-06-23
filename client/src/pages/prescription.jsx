@@ -499,11 +499,11 @@ const Prescription = () => {
       fetchDoctorSignature(loggedInPatientId || currentPatientId);
     }
 
-    // Fetch last prescription for chief complaint and diagnosis
+    // Fetch latest chief complaint from GeneralCase FIRST, then fallback to last prescription
     const patientIdToFetch = currentPatientId || loggedInPatientId;
     if (patientIdToFetch) {
-      fetchLastPrescription(patientIdToFetch);
       prefillFromGeneralCase(patientIdToFetch);
+      fetchLastPrescription(patientIdToFetch);
     }
   }, []);
 
@@ -552,11 +552,8 @@ const Prescription = () => {
         
         console.log('Updated patient data with:', { name: `${firstName} ${lastName}`.trim(), age, gender });
         
-        // Fetch chief complaint from patient medical info
-        if (patient.medicalInfo?.chiefComplaint) {
-          setSymptoms(patient.medicalInfo.chiefComplaint);
-          console.log('Fetched chief complaint from patient data:', patient.medicalInfo.chiefComplaint);
-        }
+        // We NO LONGER fetch chief complaint from patient static medical info.
+        // It should be fetched from the latest General Case Sheet instead.
         
         // Get patient email if available
         if (patient.contactInfo?.email || patient.email) {
@@ -614,11 +611,8 @@ const Prescription = () => {
           gender: derivedGender
         }));
         
-        // Fetch chief complaint from patient medical info
-        if (patient.medicalInfo?.chiefComplaint) {
-          setSymptoms(patient.medicalInfo.chiefComplaint);
-          console.log('Fetched chief complaint from patient data:', patient.medicalInfo.chiefComplaint);
-        }
+        // We NO LONGER fetch chief complaint from patient static medical info.
+        // It should be fetched from the latest General Case Sheet instead.
         
         // Get patient email if available
         if (patient.contactInfo && patient.contactInfo.email) {
@@ -759,11 +753,9 @@ const Prescription = () => {
           
           console.log('Last prescription found:', lastPrescription);
 
-          // Pre-fill chief complaint and diagnosis from last prescription only if not already set from patient data
-          if (lastPrescription.symptoms && !symptoms.trim()) {
-            setSymptoms(lastPrescription.symptoms);
-            console.log('Pre-filled chief complaint from last prescription:', lastPrescription.symptoms);
-          }
+          // We NO LONGER pre-fill chief complaint from the last prescription.
+          // It should be fetched from the latest General Case Sheet instead to ensure
+          // we don't accidentally reuse an old complaint for a new appointment.
           
           if (lastPrescription.diagnosis) {
             setDiagnosis(lastPrescription.diagnosis);

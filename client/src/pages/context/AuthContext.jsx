@@ -68,6 +68,9 @@ export const AuthProvider = ({ children }) => {
           token: token
         });
       } else if (storedRole === 'ug' && ugId && ugName) {
+        localStorage.setItem('doctorName', ugName);
+        localStorage.setItem('doctorId', ugId);
+        localStorage.setItem('doctorDepartment', ugDepartment || '');
         setUser({
           id: ugId,
           name: ugName,
@@ -203,6 +206,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('ugId', Identity);
       if (email) localStorage.setItem('ugEmail', email);
       localStorage.setItem('ugDepartment', department || '');
+      localStorage.setItem('doctorName', name);
+      localStorage.setItem('doctorId', Identity);
+      if (email) localStorage.setItem('doctorEmail', email);
+      localStorage.setItem('doctorDepartment', department || '');
       setUser({
         id: Identity,
         name: name,

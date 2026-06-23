@@ -1151,6 +1151,8 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
     const PartialDenture = partialModule.default;
 
     const normalizeDepartment = (value) => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '');
+    const GENERAL_DOCTOR_DEPARTMENT_KEYS = new Set(['general', 'generaldentistry', 'oral', 'oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology']);
+    const isGeneralDept = GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalizeDepartment(req.user?.department || ''));
     const getDepartmentBucket = (departmentLabel) => {
       const normalized = normalizeDepartment(departmentLabel);
 
@@ -1251,6 +1253,234 @@ router.get('/doctor/assigned-pgs/overview', auth, requireRole(['doctor']), async
 
     const pgQueryKeys = [...new Set([...pgIdentityKeys, ...pgIdKeys])];
 
+    // ═══════════════════════════════════════════════════════════════
+    // FAST PATH: General departments (oral medicine) — fetch ALL
+    // appointments and cases directly, no referral flow needed
+    // ═══════════════════════════════════════════════════════════════
+    if (isGeneralDept) {
+      const Appointment = (await import('../models/AppoitmentBooked.js')).Appointment;
+
+      // General departments see ALL appointments — central hub view
+      // Run all 3 queries in parallel for speed
+      const [allAppointments, generalCases] = await Promise.all([
+        Appointment.find({
+          status: { $nin: ['cancelled', 'completed', 'closed'] },
+        }).sort({ createdAt: -1 }).lean(),
+        GeneralCase.find({}, { patientId: 1, assignedPgId: 1, chiefComplaint: 1, chiefApproval: 1, createdAt: 1, patientName: 1, _id: 1 }).sort({ createdAt: -1 }).lean(),
+      ]);
+
+      const caseIds = generalCases.map(c => String(c._id));
+      const prescriptionsByCase = caseIds.length
+        ? await Prescription.find({ caseId: { $in: caseIds } }, { caseId: 1 }).lean()
+        : [];
+      const prescriptionCaseIdSet = new Set(prescriptionsByCase.map(p => String(p.caseId)));
+
+      // Build patient lookup
+      const uniquePatientIds = new Set(allAppointments.map(a => String(a.patientId)).filter(Boolean));
+      generalCases.forEach(c => { if (c.patientId) uniquePatientIds.add(String(c.patientId)); });
+
+      const patientDetails = uniquePatientIds.size
+        ? await PatientDetails.find({ patientId: { $in: Array.from(uniquePatientIds) } }, { patientId: 1, 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, 'personalInfo.gender': 1, createdAt: 1 }).lean()
+        : [];
+      const patientMap = new Map(patientDetails.map(p => [String(p.patientId), p]));
+      const patientNameMap = new Map(patientDetails.map(p => {
+        const fn = String(p?.personalInfo?.firstName || '').trim();
+        const ln = String(p?.personalInfo?.lastName || '').trim();
+        return [String(p.patientId), `${fn} ${ln}`.trim() || null];
+      }));
+
+      const pgLookup = new Map(assignedPGs.map(pg => [String(pg._id), pg]));
+      const pgIdentityToCanonical = new Map(assignedPGs.map(pg => [String(pg.Identity || '').trim(), String(pg._id)]));
+
+      // Build a patientId -> PG identity mapping from GeneralCase assignments
+      const patientToPgMap = new Map();
+      generalCases.forEach(gc => {
+        const pid = String(gc.patientId || '').trim();
+        const pgId = String(gc.assignedPgId || '').trim();
+        if (pid && pgId && !patientToPgMap.has(pid)) {
+          patientToPgMap.set(pid, pgId);
+        }
+      });
+
+      // Collect all unique identity keys from appointments to look up names
+      const allIdentityKeys = new Set();
+      allAppointments.forEach((appt) => {
+        const pgId = appt.assignedPgUgId || appt.assigned_pg_ug_id || appt.pgDoctorId || appt.doctorId || '';
+        if (pgId) allIdentityKeys.add(String(pgId).trim());
+      });
+      // Also add all PG identities
+      assignedPGs.forEach(pg => {
+        if (pg.Identity) allIdentityKeys.add(String(pg.Identity).trim());
+      });
+
+      // Look up names for all identities from User collection
+      const identityNameMap = new Map();
+      if (allIdentityKeys.size) {
+        const allUsers = await User.find(
+          { Identity: { $in: Array.from(allIdentityKeys) } },
+          { Identity: 1, name: 1, role: 1 }
+        ).lean();
+        allUsers.forEach(u => {
+          if (u.Identity) identityNameMap.set(String(u.Identity).trim(), u.name || null);
+        });
+      }
+
+      // Build scheduled appointments from actual Appointment records
+      const scheduledByPG = new Map();
+      allAppointments.forEach((appt) => {
+        const pgId = appt.assignedPgUgId || appt.assigned_pg_ug_id || appt.pgDoctorId || appt.doctorId || '';
+        let canonical = pgIdentityToCanonical.get(String(pgId).trim()) || pgId || null;
+
+        // If no PG on the appointment, try to find from GeneralCase patient mapping
+        if (!canonical) {
+          const patientId = String(appt.patientId || '').trim();
+          const assignedPgId = patientToPgMap.get(patientId);
+          if (assignedPgId) {
+            canonical = pgIdentityToCanonical.get(assignedPgId) || assignedPgId;
+          }
+        }
+
+        if (!canonical) canonical = '_unassigned';
+
+        // Resolve PG name: from pgLookup first, then from identityNameMap
+        let resolvedPgName = null;
+        if (pgLookup.has(canonical)) {
+          resolvedPgName = pgLookup.get(canonical)?.name || null;
+        } else {
+          resolvedPgName = identityNameMap.get(String(canonical).trim()) || identityNameMap.get(String(pgId).trim()) || null;
+        }
+
+        if (!scheduledByPG.has(canonical)) scheduledByPG.set(canonical, []);
+        scheduledByPG.get(canonical).push({
+          referralId: appt._id,
+          bookingId: appt.bookingId || '',
+          patientId: appt.patientId,
+          patientName: patientNameMap.get(String(appt.patientId)) || appt.patientName || null,
+          appointmentDate: appt.appointmentDate || '',
+          appointmentTime: appt.appointmentTime || '',
+          chiefComplaint: appt.chiefComplaint,
+          status: appt.status || 'pending',
+          hasCaseSheet: false,
+          hasPrescription: false,
+          caseId: '',
+          caseDepartment: 'General',
+          assignedAt: appt.createdAt,
+          resolvedPgName,
+        });
+      });
+
+      // Build a map of patientId -> latest appointment for enriching GeneralCase referrals
+      const appointmentByPatient = new Map();
+      allAppointments.forEach((appt) => {
+        const pid = String(appt.patientId || '').trim();
+        if (pid && !appointmentByPatient.has(pid)) {
+          appointmentByPatient.set(pid, appt);
+        }
+      });
+
+      // Add GeneralCase referrals
+      generalCases.forEach((gc) => {
+        const pgIdentity = String(gc.assignedPgId || '').trim();
+        const canonical = pgIdentityToCanonical.get(pgIdentity) || pgIdentity;
+        if (!pgLookup.has(canonical)) return;
+
+        if (!scheduledByPG.has(canonical)) scheduledByPG.set(canonical, []);
+        const patientId = String(gc.patientId || '').trim();
+        const hasCaseSheet = true;
+        const hasPrescription = prescriptionCaseIdSet.has(String(gc._id));
+
+        // Find matching appointment for this patient to get bookingId/date/time
+        const matchedAppt = appointmentByPatient.get(patientId) || null;
+
+        scheduledByPG.get(canonical).push({
+          referralId: gc._id,
+          bookingId: matchedAppt?.bookingId || '',
+          patientId,
+          patientName: patientNameMap.get(patientId) || gc.patientName || null,
+          appointmentDate: matchedAppt?.appointmentDate || '',
+          appointmentTime: matchedAppt?.appointmentTime || '',
+          chiefComplaint: gc.chiefComplaint,
+          status: hasPrescription ? 'completed' : (gc.chiefApproval === 'Resend: ' ? 'pending' : 'pending'),
+          statusTag: gc.chiefApproval?.startsWith('Resend') ? 'resent' : '',
+          hasCaseSheet,
+          hasPrescription,
+          caseId: String(gc._id),
+          caseDepartment: 'General',
+          chiefApproval: gc.chiefApproval || '',
+          assignedAt: gc.pgAssignedAt || gc.createdAt,
+        });
+      });
+
+      // Build analytics
+      const uniquePatientVisitCounts = new Map();
+      scheduledByPG.forEach((appts, pgKey) => {
+        appts.forEach(a => {
+          if (a.patientId) {
+            if (!uniquePatientVisitCounts.has(pgKey)) uniquePatientVisitCounts.set(pgKey, new Map());
+            const m = uniquePatientVisitCounts.get(pgKey);
+            m.set(a.patientId, (m.get(a.patientId) || 0) + 1);
+          }
+        });
+      });
+
+      const analytics = assignedPGs.map((pg) => {
+        const doctorKey = String(pg._id);
+        const visitMap = uniquePatientVisitCounts.get(doctorKey) || new Map();
+        const patientIds = Array.from(visitMap.keys());
+
+        let malePatients = 0, femalePatients = 0, newPatients = 0, oldPatients = 0;
+        patientIds.forEach(pid => {
+          const p = patientMap.get(pid);
+          const gender = String(p?.personalInfo?.gender || '').toLowerCase();
+          if (gender === 'male') malePatients++;
+          if (gender === 'female') femalePatients++;
+          const createdAt = p?.createdAt ? new Date(p.createdAt) : null;
+          if (createdAt && visitMap.get(pid) === 1) newPatients++;
+          else oldPatients++;
+        });
+
+        const pgAppts = scheduledByPG.get(doctorKey) || [];
+        const approvalCounts = { approved: 0, rejected: 0, pending: 0 };
+        pgAppts.forEach(a => {
+          const ca = String(a.chiefApproval || '').toLowerCase();
+          if (ca.includes('approved')) approvalCounts.approved++;
+          else if (ca.includes('resend') || ca.includes('redo')) approvalCounts.rejected++;
+          else approvalCounts.pending++;
+        });
+
+        return {
+          pgIdentity: pg.Identity,
+          pgName: pg.name,
+          uniquePatients: patientIds.length,
+          malePatients, femalePatients, newPatients, oldPatients,
+          totalCaseSheets: pgAppts.filter(a => a.hasCaseSheet).length,
+          approvalCounts,
+        };
+      });
+
+      const scheduledAppointmentsFlat = [];
+      scheduledByPG.forEach((list, pgKey) => {
+        const pg = pgLookup.get(pgKey);
+        list.forEach(appt => {
+          scheduledAppointmentsFlat.push({
+            ...appt,
+            pgIdentity: pg?.Identity || pgKey,
+            pgName: pg?.name || appt.resolvedPgName || (pgKey === '_unassigned' ? 'Unassigned' : pgKey),
+          });
+        });
+      });
+
+      return res.json({
+        success: true,
+        pgs: assignedPGs.map(pg => ({ ...pg })),
+        appointments: scheduledAppointmentsFlat,
+        analytics,
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SPECIALIST DEPARTMENT PATH — referral-based flow
+    // ═══════════════════════════════════════════════════════════════
     const referrals = await GeneralCase.find({ 
       $or: [
         { assignedPgId: { $in: pgIdentityKeys } },
@@ -1928,13 +2158,11 @@ router.patch('/chief/assigned-doctors/:doctorId/update', auth, requireRole(['chi
 
 router.get('/doctor/assigned-pgs/cases', auth, requireRole(['doctor']), async (req, res) => {
   try {
-    const generalCaseModule = await import('../models/GeneralCase.js');
-    const GeneralCase = generalCaseModule.default;
+    const GeneralCase = (await import('../models/GeneralCase.js')).default;
 
     const doctorIdentity = String(req.user?.Identity || '').trim();
     const rawDoctorIdentity = String(req.user?.Identity || '');
     
-    // First, find all referrals where this doctor is the specialist doctor
     const doctorReferrals = await GeneralCase.find({
       $or: [
         { specialistDoctorId: doctorIdentity },
@@ -1952,7 +2180,6 @@ router.get('/doctor/assigned-pgs/cases', auth, requireRole(['doctor']), async (r
       doctorReferrals.map(r => String(r.assignedPgId || '')).filter(Boolean)
     )];
 
-    // Get all PGs assigned by this doctor (either created by them OR assigned to referrals supervised by them)
     const assignedPGs = await User.find(
       { 
         role: 'pg',
@@ -1969,56 +2196,61 @@ router.get('/doctor/assigned-pgs/cases', auth, requireRole(['doctor']), async (r
       return res.json({ success: true, cases: [] });
     }
 
-    // Get all PG identities
     const pgIdentities = assignedPGs.map(pg => pg.Identity).filter(Boolean);
     const pgNames = new Map(assignedPGs.map(pg => [pg.Identity, pg.name]));
 
-    // Import all case models
-    const pedodonticsModule = await import('../models/PedodonticsCase.js');
-    const completeDentureModule = await import('../models/CompleteDentureCase.js');
-    const fpdModule = await import('../models/Fpd-model.js');
-    const implantModule = await import('../models/Implant-model.js');
-    const implantPatientModule = await import('../models/ImplantPatient-model.js');
-    const partialModule = await import('../models/partial-model.js');
+    const loadModel = async (path) => {
+      try {
+        const mod = await import(path);
+        return mod.default || mod;
+      } catch (e) {
+        console.error(`Failed to import model ${path}:`, e.message);
+        return null;
+      }
+    };
 
-    const PedodonticsCase = pedodonticsModule.default;
-    const CompleteDentureCase = completeDentureModule.default;
-    const FPD = fpdModule.default;
-    const Implant = implantModule.default;
-    const ImplantPatient = implantPatientModule.default;
-    const PartialDenture = partialModule.default;
+    const [pedodonticsModel, completeDentureModel, fpdModel, implantModel, implantPatientModel, partialModel] = await Promise.all([
+      loadModel('../models/PedodonticsCase.js'),
+      loadModel('../models/CompleteDentureCase.js'),
+      loadModel('../models/Fpd-model.js'),
+      loadModel('../models/Implant-model.js'),
+      loadModel('../models/ImplantPatient-model.js'),
+      loadModel('../models/partial-model.js'),
+    ]);
 
-    const endpoints = [
-      { model: PedodonticsCase, department: 'Pedodontics' },
-      { model: CompleteDentureCase, department: 'Complete Denture' },
-      { model: FPD, department: 'FPD' },
-      { model: Implant, department: 'Implant' },
-      { model: ImplantPatient, department: 'Implant Patient Surgery' },
-      { model: PartialDenture, department: 'Partial Denture' },
+    const models = [
+      { model: GeneralCase, department: 'General' },
+      { model: pedodonticsModel, department: 'Pedodontics' },
+      { model: completeDentureModel, department: 'Complete Denture' },
+      { model: fpdModel, department: 'FPD' },
+      { model: implantModel, department: 'Implant' },
+      { model: implantPatientModel, department: 'Implant Patient Surgery' },
+      { model: partialModel, department: 'Partial Denture' },
     ];
 
-    const casePromises = endpoints.map(async ({ model, department }) => {
+    const allCases = [];
+
+    const queryPromises = models.map(async ({ model, department }) => {
+      if (!model) return [];
       try {
         const cases = await model.find({ doctorId: { $in: pgIdentities } })
           .sort({ createdAt: -1 })
           .lean();
-
         return cases.map(c => ({
           ...c,
           department,
           pgName: pgNames.get(c.doctorId) || c.doctorName,
         }));
       } catch (err) {
-        console.error(`Error fetching ${department} cases:`, err);
+        console.error(`Error fetching ${department} cases:`, err.message);
         return [];
       }
     });
 
-    const results = await Promise.all(casePromises);
-    const allCases = results.flat();
+    const results = await Promise.all(queryPromises);
+    results.forEach(cases => allCases.push(...cases));
 
-    // Sort by creation date
-    allCases.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    allCases.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     res.json({ success: true, cases: allCases });
   } catch (err) {
@@ -2032,21 +2264,13 @@ router.patch('/doctor/assigned-pgs/cases/:caseId/approve', auth, requireRole(['d
   try {
     const { caseId } = req.params;
     const { department, chiefApproval, approvedBy } = req.body;
-    const normalizedDepartment = normalizeDepartmentName(req.user?.department);
-
-    if (normalizedDepartment === 'general' || normalizedDepartment === 'generaldentistry' || normalizedDepartment.includes('oral')) {
-      return res.status(403).json({
-        success: false,
-        message: 'General doctors cannot use case-sheet approval controls.',
-      });
-    }
 
     if (!department) {
       return res.status(400).json({ success: false, message: 'Department is required' });
     }
 
-    // Map department to model
     const modelMap = {
+      'General': '../models/GeneralCase.js',
       'Pedodontics': '../models/PedodonticsCase.js',
       'Complete Denture': '../models/CompleteDentureCase.js',
       'FPD': '../models/Fpd-model.js',

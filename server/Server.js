@@ -61,6 +61,26 @@ connectDB().catch((error) => {
   console.error('❌ MongoDB initialization failed:', error?.message || error);
 });
 
+// Middlewares
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// In development, allow requests from any origin (Vite, local network testing, etc.).
+// In production, allow only explicitly configured origins (or same-origin when `origin:false`).
+const corsOptions = {
+  origin: !isProduction ? true : corsOrigins.length > 0 ? corsOrigins : false,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+// Ensure preflight (OPTIONS) requests are handled consistently.
+// Express 5 (path-to-regexp v6+) does not accept "*" as a route pattern.
+app.options(/.*/, cors(corsOptions));
+
 // If DB config is missing or initialization failed, fail fast with a helpful message.
 // (On Vercel we don't `process.exit`, so without this the API can look like random 404s/timeouts.)
 app.use('/api', (req, res, next) => {
@@ -99,26 +119,6 @@ app.use('/api', (req, res, next) => {
 
   return next();
 });
-
-// Middlewares
-const corsOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-// In development, allow requests from any origin (Vite, local network testing, etc.).
-// In production, allow only explicitly configured origins (or same-origin when `origin:false`).
-const corsOptions = {
-  origin: !isProduction ? true : corsOrigins.length > 0 ? corsOrigins : false,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-
-app.use(cors(corsOptions));
-// Ensure preflight (OPTIONS) requests are handled consistently.
-// Express 5 (path-to-regexp v6+) does not accept "*" as a route pattern.
-app.options(/.*/, cors(corsOptions));
 
 // Increase payload limits
 app.use(express.json({ limit: '10mb' }));

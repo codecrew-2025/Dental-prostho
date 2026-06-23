@@ -12,8 +12,6 @@ import {
   classifyUrgency,
   generatePatientEducation,
 } from '../../utils/generalDoctorAlgorithm';
-import FollowUpAppointment from '../../components/FollowUpAppointment';
-import { bookFollowUpAppointment } from '../../utils/appointmentUtils';
 import './OralMedicine.css';
 
 const DRAFT_ROUTE_KEY = '/oral-medicine'; 
@@ -87,8 +85,6 @@ const OralMedicine = () => {
   const { user } = useAuth();
 
   const [form, setForm] = useState(INITIAL_FORM);
-  const [followUpDate, setFollowUpDate] = useState('');
-  const [followUpTime, setFollowUpTime] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -254,6 +250,29 @@ const OralMedicine = () => {
         else if (known) setAllergyMessage(`Known Allergies: ${known}`);
         else if (diet) setAllergyMessage(`Diet Allergies: ${diet}`);
         else setAllergyMessage('No known allergies');
+
+        // Load chief complaint from the latest non-follow-up appointment for this patient
+        try {
+          const token = localStorage.getItem('token');
+          const apptRes = await fetch(buildApiUrl(`/api/appointment/appointments/patient/${encodeURIComponent(patientId)}`), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (apptRes.ok) {
+            const apptData = await apptRes.json();
+            const appointments = Array.isArray(apptData?.appointments) ? apptData.appointments : [];
+            // Find the latest non-follow-up appointment
+            const nonFollowUp = appointments.find(a =>
+              !String(a?.chiefComplaint || '').toLowerCase().includes('follow up') &&
+              !String(a?.chiefComplaint || '').toLowerCase().includes('follow-up')
+            );
+            if (nonFollowUp) {
+              const latestComplaint = String(nonFollowUp.chiefComplaint || '').trim();
+              if (latestComplaint && isMounted) {
+                setForm(prev => ({ ...prev, chiefComplaint: latestComplaint }));
+              }
+            }
+          }
+        } catch { /* ignore — keep patient record fallback */ }
       } catch { if (isMounted) setAllergyMessage('No known allergies'); }
     };
     load();
@@ -353,12 +372,19 @@ const OralMedicine = () => {
   };
 
   const handleNext = () => {
-    if (currentPage < TOTAL_PAGES - 1) setCurrentPage(p => p + 1);
-    else handleSubmit('prescription');
+    if (currentPage < TOTAL_PAGES - 1) {
+      setCurrentPage(p => p + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      handleSubmit('prescription');
+    }
   };
 
   const handlePrev = () => {
-    if (currentPage > 0) setCurrentPage(p => p - 1);
+    if (currentPage > 0) {
+      setCurrentPage(p => p - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleSubmit = async (eOrRedirectTo) => {
@@ -473,11 +499,6 @@ const OralMedicine = () => {
         }
 
         if (data.data?._id) localStorage.setItem('caseId', data.data._id);
-        
-        // Book Follow-up Appointment if selected
-        if (followUpDate && followUpTime) {
-          await bookFollowUpAppointment(patientId, null, followUpDate, followUpTime);
-        }
 
         await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
         const pName = form.patientName || patientName || 'Patient';
@@ -932,13 +953,6 @@ const OralMedicine = () => {
           <p style={{ color: '#b91c1c', fontSize: '0.8rem', marginTop: 4 }}>Signature is required to submit.</p>
         )}
       </div>
-
-      <FollowUpAppointment 
-        date={followUpDate} 
-        setDate={setFollowUpDate} 
-        time={followUpTime} 
-        setTime={setFollowUpTime} 
-      />
     </div>
   );
 

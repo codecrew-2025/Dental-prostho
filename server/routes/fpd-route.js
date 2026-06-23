@@ -46,7 +46,7 @@ const sendEmail = async (to, subject, html) => {
 // @route   GET /api/fpd/chief/all-cases
 // @desc    Get all FPD case sheets for chief review
 // @access  Private (Chief Doctor)
-router.get('/chief/all-cases', authenticate, requireRole(['doctor','chief']), async (req, res) => {
+router.get('/chief/all-cases', authenticate, requireRole(['doctor','chief','chief-doctor']), async (req, res) => {
   try {
     if (!hasChiefDepartmentAccess(req.user, ['prosthodontics', 'fpd', 'fixedpartialdenture'])) {
       return chiefDepartmentAccessDenied(res);

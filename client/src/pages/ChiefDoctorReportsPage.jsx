@@ -41,7 +41,15 @@ const allowedCaseDepartmentsByChiefDepartment = {
   implant: ["implant"],
   implantpatient: ["implantPatient"],
   partialdenture: ["partial"],
-  partial: ["partial"]
+  partial: ["partial"],
+  oral: ["oral"],
+  oralandmaxillofacial: ["oral"],
+  oralandmaxillofacialsurgery: ["oral"],
+  oralmedicine: ["oral"],
+  oralmedicineandradiology: ["oral"],
+  oralmedicineradiology: ["oral"],
+  general: ["oral"],
+  generaldentistry: ["oral"],
 };
 
 const ChiefDoctorReportsPage = () => {

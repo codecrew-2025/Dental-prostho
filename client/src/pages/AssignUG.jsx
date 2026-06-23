@@ -206,13 +206,13 @@ const AssignUG = ({
               </div>
 
               <div className="form-group">
-                <label htmlFor="staffId">Staff ID *</label>
+                <label htmlFor="staffId">Register Number *</label>
                 <input
                   type="text"
                   id="staffId"
                   value={staffId}
                   onChange={(e) => setStaffId(e.target.value)}
-                  placeholder="Enter Staff ID"
+                  placeholder="Enter Register Number"
                   required={!isEditMode}
                   disabled={isLoading || isEditMode}
                 />

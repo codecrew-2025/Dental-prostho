@@ -440,6 +440,11 @@ const ChiefDoctorDashboard = () => {
         oral: ["oral"],
         oralandmaxillofacial: ["oral"],
         oralandmaxillofacialsurgery: ["oral"],
+        oralmedicine: ["oral"],
+        oralmedicineandradiology: ["oral"],
+        oralmedicineradiology: ["oral"],
+        general: ["oral"],
+        generaldentistry: ["oral"],
       };
 
       const allowedCaseDepartments = allowedCaseDepartmentsByChiefDepartment[normalizedChiefDepartment] || [];
@@ -453,12 +458,16 @@ const ChiefDoctorDashboard = () => {
 
       const requests = endpoints.map(async (ep) => {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
           const res = await fetch(ep.url, {
+            signal: controller.signal,
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
           });
+          clearTimeout(timeoutId);
 
           if (!res.ok) {
             console.warn(`[${ep.department}] ${res.status} - ${res.statusText}`);
@@ -1346,6 +1355,7 @@ const ChiefDoctorDashboard = () => {
                                 <tr>
                                   <th>S.No</th>
                                   <th>Booking ID</th>
+                                  <th>Patient Name</th>
                                   <th>Patient ID</th>
                                   <th>Date</th>
                                   <th>Time</th>
@@ -1357,6 +1367,7 @@ const ChiefDoctorDashboard = () => {
                                   <tr key={appointment.bookingId}>
                                     <td>{index + 1}</td>
                                     <td>{appointment.bookingId || "-"}</td>
+                                    <td>{appointment.patientName || "-"}</td>
                                     <td>{appointment.patientId || "-"}</td>
                                     <td>{appointment.appointmentDate || "-"}</td>
                                     <td>{appointment.appointmentTime || "-"}</td>

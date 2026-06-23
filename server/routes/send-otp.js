@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer';
 import sgMail from '@sendgrid/mail';
 import { Resend } from 'resend';
 import { setOtp, verifyOtp as verifyStoredOtp } from '../utils/otpStore.js';
+import Appointment from '../models/AppoitmentBooked.js';
 
 dotenv.config();
 const router = Router();
@@ -353,6 +354,38 @@ router.post("/update", async (req, res) => {
     if (email) patient.email = email;
 
     await patient.save();
+
+    // Cascade email changes to existing appointments
+    try {
+      const finalEmail = patient.email;
+      if (finalEmail) {
+        await Appointment.updateMany(
+          { patientId: Identity, patientEmail: { $ne: finalEmail } },
+          { $set: { patientEmail: finalEmail } }
+        );
+      }
+    } catch (cascadeErr) {
+      console.error('Failed to cascade patient email to appointments:', cascadeErr.message);
+    }
+
+    // Also update PatientDetails if it exists
+    try {
+      const { PatientDetails } = await import('../models/patientDetails.js');
+      const nameParts = (name || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      await PatientDetails.findOneAndUpdate(
+        { patientId: Identity },
+        {
+          ...(name ? { 'personalInfo.firstName': firstName, 'personalInfo.lastName': lastName } : {}),
+          ...(email ? { 'personalInfo.email': email } : {}),
+          ...(phone ? { 'personalInfo.phone': phone } : {}),
+        }
+      );
+    } catch (pdErr) {
+      console.error('Failed to sync PatientDetails:', pdErr.message);
+    }
+
     return res.json({ success: true, message: "Patient updated", patient });
 
   } catch (err) {

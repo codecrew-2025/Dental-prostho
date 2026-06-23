@@ -9,6 +9,7 @@ import generateNextPatientId from '../utils/patientIdGenerator.js';
 import { hash } from 'bcryptjs';
 import Appointment from '../models/AppoitmentBooked.js';
 import AssignmentState from '../models/AssignmentState.js';
+import { pickPgForDoctor } from '../utils/referralFlow.js';
 
  
 
@@ -146,14 +147,16 @@ const GENERAL_DOCTOR_DEPT_KEYS = new Set([
   'oralmedicineandradiology', 'oralmedicineradiology'
 ]);
 
+const ORAL_MEDICINE_DEPT_KEYS = new Set(['oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology']);
+
 const normalizeDept = (value) => String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '');
 
 const pickDoctorForAutoAppointment = async () => {
-  const doctors = await User.find({ role: 'doctor' }).lean();
-  const generalDoctors = doctors.filter(d => GENERAL_DOCTOR_DEPT_KEYS.has(normalizeDept(d.department)));
-  if (!generalDoctors.length) return null;
+  const doctors = await User.find({ role: 'doctor', createdBy: { $ne: null } }).lean();
+  const oralMedicineDoctors = doctors.filter(d => ORAL_MEDICINE_DEPT_KEYS.has(normalizeDept(d.department)));
+  if (!oralMedicineDoctors.length) return null;
 
-  generalDoctors.sort((a, b) => {
+  oralMedicineDoctors.sort((a, b) => {
     const aId = (a.Identity || "").toString();
     const bId = (b.Identity || "").toString();
     const byIdentity = aId.localeCompare(bId, "en", { numeric: true, sensitivity: "base" });
@@ -168,8 +171,8 @@ const pickDoctorForAutoAppointment = async () => {
   ).lean();
 
   const counter = typeof state?.counter === 'number' ? state.counter : 1;
-  const idx = ((counter - 1) % generalDoctors.length + generalDoctors.length) % generalDoctors.length;
-  return generalDoctors[idx];
+  const idx = ((counter - 1) % oralMedicineDoctors.length + oralMedicineDoctors.length) % oralMedicineDoctors.length;
+  return oralMedicineDoctors[idx];
 };
 
 // GET /api/patient-details/next-id - generate next available patient ID
@@ -398,38 +401,35 @@ router.post('/', async (req, res) => {
     if (chiefComplaint) {
       try {
         const today = new Date().toISOString().split('T')[0];
-        const assignedDoctor = await pickDoctorForAutoAppointment();
+        const ORAL_MEDICINE_DEPT_LABEL = 'Oral Medicine and Radiology';
+        const patientEmail = String(personalInfo?.email || '').trim() || linkedUser?.email || '';
 
-        if (assignedDoctor) {
-          const patientEmail = String(personalInfo?.email || '').trim() || linkedUser?.email || '';
-
-          let bookingCreated = false;
-          for (let attempt = 0; attempt < 3; attempt++) {
-            const bookingId = generateBookingId();
-            try {
-              await Appointment.create({
-                bookingId,
-                patientId: finalPatientId,
-                patientEmail,
-                chiefComplaint,
-                appointmentDate: today,
-                appointmentTime: '9:00 AM',
-                doctorId: String(assignedDoctor._id),
-                status: 'assigned',
-                isProcessed: false,
-                needsGeneralApproval: false,
-                needsPgApproval: false,
-              });
-              bookingCreated = true;
-              break;
-            } catch (createErr) {
-              if (createErr?.code !== 11000 || attempt === 2) throw createErr;
-            }
+        let bookingCreated = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const bookingId = generateBookingId();
+          try {
+            await Appointment.create({
+              bookingId,
+              patientId: finalPatientId,
+              patientEmail,
+              chiefComplaint,
+              appointmentDate: today,
+              appointmentTime: '9:00 AM',
+              currentDepartment: ORAL_MEDICINE_DEPT_LABEL,
+              status: 'pending',
+              isProcessed: false,
+              needsGeneralApproval: false,
+              needsPgApproval: false,
+            });
+            bookingCreated = true;
+            break;
+          } catch (createErr) {
+            if (createErr?.code !== 11000 || attempt === 2) throw createErr;
           }
+        }
 
-          if (bookingCreated) {
-            console.log(`✅ Auto-created appointment for patient ${finalPatientId}`);
-          }
+        if (bookingCreated) {
+          console.log(`✅ Auto-created appointment for patient ${finalPatientId}`);
         }
       } catch (apptError) {
         console.error('⚠️ Failed to auto-create appointment:', apptError);
@@ -536,6 +536,19 @@ router.put('/by-patient-id/:patientId', async (req, res) => {
         success: false,
         message: 'Patient not found'
       });
+    }
+
+    // Cascade email changes to existing appointments
+    try {
+      const newEmail = updatedPatient?.personalInfo?.email;
+      if (newEmail) {
+        await Appointment.updateMany(
+          { patientId: patientId, patientEmail: { $ne: newEmail } },
+          { $set: { patientEmail: newEmail } }
+        );
+      }
+    } catch (cascadeErr) {
+      console.error('Failed to cascade patient email to appointments:', cascadeErr.message);
     }
 
     res.status(200).json({

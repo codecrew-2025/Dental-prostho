@@ -193,6 +193,29 @@ const appointmentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    originalDate: {
+      type: String,
+      default: null,
+    },
+
+    originalTime: {
+      type: String,
+      default: null,
+    },
+
+    patientRescheduleStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: null,
+    },
+
+    // Which department currently owns this appointment (broadcast visibility)
+    currentDepartment: {
+      type: String,
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true, // ✅ required for sorting by createdAt

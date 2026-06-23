@@ -80,9 +80,9 @@ const sortUsersForAssignment = (users) => {
   });
 };
 
-const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
+export const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
   const aliases = getDepartmentAliases(departmentLabel);
-  const doctors = await User.find({ role: 'doctor' }, { _id: 1, name: 1, Identity: 1, department: 1 }).lean();
+  const doctors = await User.find({ role: 'doctor', createdBy: { $ne: null } }, { _id: 1, name: 1, Identity: 1, department: 1 }).lean();
 
   const eligibleDoctors = sortUsersForAssignment(
     doctors.filter((doctor) => {
@@ -97,9 +97,9 @@ const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
   return eligibleDoctors[startIndex];
 };
 
-const pickPgForDoctor = async (doctor) => {
+export const pickPgForDoctor = async (doctor) => {
   const students = await User.find(
-    { role: { $in: ['pg', 'ug'] }, department: doctor.department },
+    { role: { $in: ['pg', 'ug'] }, createdBy: doctor._id },
     { _id: 1, name: 1, Identity: 1, department: 1, role: 1 }
   ).lean();
 
@@ -142,14 +142,35 @@ const assignReferralToPg = async (caseItem) => {
   return { specialistDoctor, assignedPg };
 };
 
-const updateUpcomingAppointmentAssignment = async ({ patientId, assignedPgId, specialistDoctorId }) => {
+const updateUpcomingAppointmentAssignment = async ({ patientId, assignedPgId, specialistDoctorId, completedByIdentity, nextDepartment }) => {
   const today = new Date().toISOString().slice(0, 10);
 
-  const appt = await Appointment.findOne({
-    patientId,
-    appointmentDate: { $gte: today },
-    status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
-  }).sort({ appointmentDate: 1, appointmentTime: 1, createdAt: -1 });
+  // First try to find the appointment assigned to the completing PG/UG
+  let appt = null;
+  if (completedByIdentity) {
+    appt = await Appointment.findOne({
+      patientId,
+      $or: [
+        { assigned_pg_ug_id: completedByIdentity },
+        { assignedPgUgId: completedByIdentity },
+        { pgDoctorId: completedByIdentity },
+        { doctorId: completedByIdentity },
+      ],
+      appointmentDate: { $gte: today },
+      status: { $nin: ['cancelled', 'completed', 'closed'] },
+      isProcessed: { $ne: true },
+    }).sort({ appointmentDate: 1, appointmentTime: 1, createdAt: -1 });
+  }
+
+  // Fallback: find any unprocessed upcoming appointment for this patient
+  if (!appt) {
+    appt = await Appointment.findOne({
+      patientId,
+      appointmentDate: { $gte: today },
+      status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
+      isProcessed: { $ne: true },
+    }).sort({ appointmentDate: 1, appointmentTime: 1, createdAt: -1 });
+  }
 
   if (!appt) return null;
 
@@ -159,6 +180,11 @@ const updateUpcomingAppointmentAssignment = async ({ patientId, assignedPgId, sp
   appt.pgDoctorId = assignedPgId || null;
   appt.supervisingDeptDoctorId = specialistDoctorId || null;
   appt.supervising_dept_doctor_id = specialistDoctorId || null;
+
+  // Move appointment to the next department's visibility
+  if (nextDepartment) {
+    appt.currentDepartment = nextDepartment;
+  }
 
   await appt.save();
   return appt;
@@ -258,6 +284,8 @@ export const advanceGeneralCaseReferralIfEligible = async ({
       patientId: normalizedPatientId,
       assignedPgId: assignedPg.Identity,
       specialistDoctorId: specialistDoctor?.Identity || '',
+      completedByIdentity,
+      nextDepartment: caseItem.referredDepartment,
     });
   }
 

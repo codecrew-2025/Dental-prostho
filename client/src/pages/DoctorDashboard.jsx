@@ -1688,17 +1688,17 @@ const DoctorDashboard = () => {
         },
       });
 
+      const json = await res.json();
       if (!res.ok) {
         console.warn(`Error fetching cases: ${res.status} - ${res.statusText}`);
-        throw new Error('Failed to fetch cases');
+        setCases([]);
+        return;
       }
-
-      const json = await res.json();
       const allCases = json.cases || [];
       setCases(allCases);
     } catch (err) {
       console.error(err);
-      setCasesError('Failed to fetch cases from your assigned PGs');
+      setCases([]);
     } finally {
       if (!silent) setCasesLoading(false);
     }
@@ -2522,28 +2522,6 @@ const DoctorDashboard = () => {
                         onChange={(e) => setPGSearchTerm(e.target.value)}
                         className="chief-select pg-select-doctor"
                       />
-                    <select 
-                      id="pg-select"
-                      value={selectedAppointmentPG}
-                      onChange={(e) => setSelectedAppointmentPG(e.target.value)}
-                      className="chief-select pg-select-doctor"
-                    >
-                      <option value="">All PGs</option>
-                        {assignedPGs
-                          .filter((pg) => {
-                            if (!pgSearchTerm.trim()) return true;
-                            const searchLower = pgSearchTerm.toLowerCase();
-                            return (
-                              (pg.name || '').toLowerCase().includes(searchLower) ||
-                              (pg.Identity || '').toLowerCase().includes(searchLower)
-                            );
-                          })
-                          .map((pg) => (
-                        <option key={`${pg.Identity}-${pg.department}`} value={pg.Identity}>
-                          {pg.name} ({pg.Identity})
-                        </option>
-                        ))}
-                    </select>
 
                     <label htmlFor="pg-from-date" className="pg-appointment-selector-label">From:</label>
                     <input
@@ -2890,11 +2868,11 @@ const DoctorDashboard = () => {
                 </div>
 
                 <div className="chief-analytics-control">
-                  <label>PG or Doctor Name</label>
+                  <label>Doctor Name</label>
                   <input
                     className="chief-select"
                     type="text"
-                    placeholder="Search PG or Doctor name..."
+                    placeholder="Search Doctor name..."
                     value={analyticsSearchName}
                     onChange={(e) => setAnalyticsSearchName(e.target.value)}
                   />
@@ -2937,7 +2915,7 @@ const DoctorDashboard = () => {
                   <div className="chief-analytics-charts">
                     {/* Patients by PG Pie Chart */}
                     <div className="chief-chart-container">
-                      <h3>Patients Distribution by Student</h3>
+                      <h3>Patients Distribution</h3>
                       {(() => {
                         const total = filteredAnalyticsPgs.reduce((sum, d) => sum + (d.uniquePatients || 0), 0);
                         if (total === 0) {
@@ -3045,7 +3023,7 @@ const DoctorDashboard = () => {
                     <thead>
                       <tr>
                         <th>S.No</th>
-                        <th>Student</th>
+                        <th>Doctor</th>
                         <th>Patients</th>
                         <th>Male</th>
                         <th>Female</th>
@@ -3061,7 +3039,11 @@ const DoctorDashboard = () => {
                       {filteredAnalyticsPgs.map((row, index) => (
                         <tr key={row.pgIdentity}>
                           <td>{index + 1}</td>
-                          <td>{row.pgName || row.pgIdentity}</td>
+                          <td>{row.pgName || row.pgIdentity}
+                            <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: (row.role || '').toLowerCase() === 'pg' ? '#1565c0' : '#2e7d32', color: 'white', fontWeight: 600, verticalAlign: 'middle' }}>
+                              {(row.role || '').toLowerCase() === 'pg' ? 'PG' : 'UG'}
+                            </span>
+                          </td>
                           <td>{row.uniquePatients || 0}</td>
                           <td>{row.malePatients || 0}</td>
                           <td>{row.femalePatients || 0}</td>
@@ -3229,7 +3211,7 @@ const DoctorDashboard = () => {
                   <thead>
                     <tr>
                       <th>S.No</th>
-                      <th>Student</th>
+                      <th>Doctor</th>
                       <th>Patients</th>
                       <th>Male</th>
                       <th>Female</th>
@@ -3245,8 +3227,12 @@ const DoctorDashboard = () => {
                     {doctorPgAnalyticsReport.pgs.map((row, index) => (
                       <tr key={row.pgIdentity}>
                         <td>{index + 1}</td>
-                        <td>{row.pgName || row.pgIdentity}</td>
-                        <td>{row.uniquePatients || 0}</td>
+                        <td>{row.pgName || row.pgIdentity}
+                            <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: (row.role || '').toLowerCase() === 'pg' ? '#1565c0' : '#2e7d32', color: 'white', fontWeight: 600, verticalAlign: 'middle' }}>
+                              {(row.role || '').toLowerCase() === 'pg' ? 'PG' : 'UG'}
+                            </span>
+                          </td>
+                          <td>{row.uniquePatients || 0}</td>
                         <td>{row.malePatients || 0}</td>
                         <td>{row.femalePatients || 0}</td>
                         <td>{row.newPatients || 0}</td>
@@ -3382,7 +3368,7 @@ const DoctorDashboard = () => {
                             </td>
                             <td>
                                 <div className="chief-actions-group">
-                                  {isSpecialistDoctor && status === 'Pending' ? (
+                                  {status === 'Pending' ? (
                                   <div className="action-buttons">
                                     {actionLoadingCaseId === c._id ? (
                                       <div
