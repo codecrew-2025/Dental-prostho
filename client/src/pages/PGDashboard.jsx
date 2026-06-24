@@ -127,9 +127,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
   const [rescheduleSubmittingBookingId, setRescheduleSubmittingBookingId] = useState('');
   const [bookedSlotsByDate, setBookedSlotsByDate] = useState({});
   const [bookedSlotsLoadingDate, setBookedSlotsLoadingDate] = useState('');
-  const [generalCasePreview, setGeneralCasePreview] = useState(null);
-  const [generalCasePreviewLoading, setGeneralCasePreviewLoading] = useState(false);
-  const [generalCasePreviewError, setGeneralCasePreviewError] = useState('');
   const [showMessageBox, setShowMessageBox] = useState(false);
   const [messageTitle, setMessageTitle] = useState('');
   const [messageContent, setMessageContent] = useState('');
@@ -718,56 +715,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
     }
   };
 
-  const fetchGeneralCasePreview = async (patientId) => {
-    const resolvedPatientId = String(patientId || '').trim();
-    if (!resolvedPatientId) {
-      setGeneralCasePreview(null);
-      setGeneralCasePreviewError('Patient ID missing.');
-      return;
-    }
-
-    setGeneralCasePreviewLoading(true);
-    setGeneralCasePreviewError('');
-    setGeneralCasePreview(null);
-
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(
-        buildApiUrl(`/api/general/patient/${encodeURIComponent(resolvedPatientId)}`),
-        {
-          headers: token
-            ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-            : { 'Content-Type': 'application/json' },
-        }
-      );
-
-      if (res.status === 401) {
-        await ensureActiveSession(res, 'Token expired');
-        return;
-      }
-
-      const json = await res.json();
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.message || 'Failed to load General Case Sheet');
-      }
-
-      const cases = Array.isArray(json.data) ? json.data : [];
-      const latest = [...cases].sort((a, b) => {
-        const aTime = new Date(a?.createdAt || a?.updatedAt || 0).getTime();
-        const bTime = new Date(b?.createdAt || b?.updatedAt || 0).getTime();
-        return bTime - aTime;
-      })[0] || null;
-
-      setGeneralCasePreview(latest);
-    } catch (error) {
-      console.error('Failed to load general case preview:', error);
-      setGeneralCasePreview(null);
-      setGeneralCasePreviewError(error.message || 'Failed to load General Case Sheet');
-    } finally {
-      setGeneralCasePreviewLoading(false);
-    }
-  };
-
   // Options for form fields
   const hpiOptions = ["Diabetes", "Hypertension", "Asthma", "Hyperlipidemia", "Thyroid", "None"];
   const pastMedicalHistoryOptions = ["Diabetes", "Hypertension", "Osteoporosis", "Arthritis", "Heart Disease", "None"];
@@ -862,9 +809,9 @@ const PGDashboard = ({ brandTitleOverride }) => {
     if (departmentKey.includes('publichealthdentistry') || departmentKey.includes('publichealth') || departmentKey.includes('communitydentistry')) return '/general-case-sheet';
     if (departmentKey === 'pedodontics') return '/pedodontics';
     if (departmentKey === 'periodontics') return '/casePortal?dept=periodontics';
-    if (departmentKey.includes('oral') || departmentKey.includes('maxillofacial')) return '/casePortal?dept=oral';
+    if (departmentKey.includes('oral') || departmentKey.includes('maxillofacial')) return '/oral-medicine';
     if (departmentKey.includes('conservative') || departmentKey.includes('endodontic')) return '/casePortal';
-    if (departmentKey === 'general' || departmentKey === 'generaldentistry') return '/general-case-sheet';
+    if (departmentKey === 'general' || departmentKey === 'generaldentistry') return '/oral-medicine';
     return '/casePortal?dept=prosthodontics';
   };
 
@@ -1368,7 +1315,7 @@ const PGDashboard = ({ brandTitleOverride }) => {
     if (!normalized) return 'pending';
     if (normalized.includes('approved')) return 'approved';
     if (normalized.startsWith('redo') || normalized.startsWith('resend') || normalized.startsWith('rejected')) return 'redo';
-    return 'redo';
+    return 'pending';
   };
 
   const assignedCasesAlertStatus = useMemo(() => {
@@ -1500,10 +1447,13 @@ const PGDashboard = ({ brandTitleOverride }) => {
     const departmentRoute = isPublicHealthDept
       ? (ensuredCaseId ? '/general-case-view' : '/general-case-sheet')
       : getCaseRouteForDepartment(resolvedDepartmentLabel);
-    const separator = departmentRoute.includes('?') ? '&' : '?';
-    const caseIdParam = ensuredCaseId ? `&caseId=${encodeURIComponent(ensuredCaseId)}` : '';
-    const patientRouteUrl = `${departmentRoute}${separator}patientId=${encodeURIComponent(currentPatientId)}&patientName=${encodeURIComponent(currentPatientName || currentPatientId)}&department=${encodeURIComponent(resolvedDepartmentLabel)}${caseIdParam}`;
-    window.open(patientRouteUrl, '_blank');
+    const queryParams = new URLSearchParams();
+    queryParams.set('patientId', currentPatientId);
+    queryParams.set('patientName', currentPatientName || currentPatientId);
+    queryParams.set('department', resolvedDepartmentLabel);
+    if (ensuredCaseId) queryParams.set('caseId', ensuredCaseId);
+    const patientRouteUrl = `${departmentRoute}?${queryParams.toString()}`;
+    navigate(patientRouteUrl, { state: { requestConsentAfterEntry: true } });
   };
 
   const getResolvedPractitionerId = () => {
@@ -1811,9 +1761,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
       populateFormWithPatientData(registeredPatient);
       setGeneratedUserId(registeredPatient.patientId || enteredId);
       showMessage(`Patient details loaded for ID: ${registeredPatient.patientId || enteredId}`, 'success');
-
-      // Load latest General Case Sheet as a preview
-      fetchGeneralCasePreview(registeredPatient.patientId || enteredId);
 
       // Optional: also merge any existing doctor-patient details for this ID
       try {
@@ -2289,69 +2236,6 @@ const PGDashboard = ({ brandTitleOverride }) => {
                   </div>
                 )}
 
-                {/* General Case Sheet Preview */}
-                {showUserIdDisplay && !isPublicHealthDentistry && (
-                  <div className="general-case-preview-section" style={{ margin: '16px 0', padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>General Case Sheet Preview</div>
-                    {generalCasePreviewLoading ? (
-                      <div className="chief-inline-loading">Loading preview...</div>
-                    ) : generalCasePreviewError ? (
-                      <div className="error-message">{generalCasePreviewError}</div>
-                    ) : generalCasePreview ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12 }}>
-                        <div>
-                          <div style={{ marginBottom: 4 }}><strong>Chief Complaint:</strong> {generalCasePreview.chiefComplaint || '—'}</div>
-                          <div style={{ marginBottom: 4 }}><strong>Present Illness:</strong> {generalCasePreview.presentIllness || '—'}</div>
-                          <div style={{ marginBottom: 4 }}><strong>Clinical Findings:</strong> {generalCasePreview.clinicalFindings || '—'}</div>
-                          <div><strong>Final Diagnosis:</strong> {generalCasePreview.finalDiagnosis || generalCasePreview.provisionalDiagnosis || '—'}</div>
-                        </div>
-                        <div style={{ textAlign: 'center', minWidth: 80 }}>
-                          <div style={{ fontSize: 12, marginBottom: 4, color: '#64748b' }}>X-ray</div>
-                          {String(generalCasePreview.xrayImage || '').trim() ? (
-                            <img
-                              src={String(generalCasePreview.xrayImage || '').trim()}
-                              alt="X-ray"
-                              style={{ maxWidth: 80, maxHeight: 80, borderRadius: 4, border: '1px solid #cbd5e1' }}
-                            />
-                          ) : (
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>No X-ray</div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ color: '#64748b', fontSize: 13 }}>No General Case Sheet found for this patient.</div>
-                    )}
-                    <div style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        className="view-button"
-                        onClick={() => {
-                          const pid = String(generatedUserId || '').trim();
-                          const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
-                          if (pid) {
-                            const normalizedDept = normalizeDepartment(pgDepartmentLabel || user?.department || '');
-                            const isPublicHealthDept =
-                              normalizedDept.includes('publichealthdentistry') ||
-                              normalizedDept.includes('publichealth') ||
-                              normalizedDept.includes('communitydentistry');
-                            const departmentRoute = isPublicHealthDept
-                              ? '/general-case-view'
-                              : getCaseRouteForDepartment(pgDepartmentLabel || user?.department || '');
-                            const separator = departmentRoute.includes('?') ? '&' : '?';
-                            window.open(
-                              `${departmentRoute}${separator}patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname || pid)}&department=${encodeURIComponent(pgDepartmentLabel || user?.department || '')}`,
-                              '_blank'
-                            );
-                          }
-                        }}
-                        disabled={!generatedUserId}
-                      >
-                        View Full General Case Sheet
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {/* Form Section */}
                 {showForm && (
                   <div className="patient-form">
@@ -2602,18 +2486,52 @@ const PGDashboard = ({ brandTitleOverride }) => {
                     )}
 
                     {/* Navigation buttons */}
-                    <div className="form-actions">
-                      <button className="save-btn" onClick={handleSavePatient} disabled={isLoading}>
-                        {isLoading ? '...Saving...' : 'Save Patient Details'}
-                      </button>
-                      <button
-                        className="case-files-btn"
-                        onClick={openAssignedCaseRoute}
-                        type="button"
-                        disabled={!canNavigateCases}
-                      >
-                        Go to Department Case Sheet
-                      </button>
+                    <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+                      <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button className="save-btn" onClick={handleSavePatient} disabled={isLoading}>
+                          {isLoading ? '...Saving...' : 'Save Patient Details'}
+                        </button>
+                        <button
+                          className="case-files-btn"
+                          onClick={openAssignedCaseRoute}
+                          type="button"
+                          disabled={!canNavigateCases}
+                        >
+                          Go to Department Case Sheet
+                        </button>
+                        <button
+                          className="case-history-btn"
+                          onClick={() => {
+                            const pid = String(generatedUserId || '').trim();
+                            const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
+                            if (pid) {
+                              localStorage.setItem('CurrentpatientId', pid);
+                              if (pname) localStorage.setItem('CurrentpatientName', pname);
+                              window.open('/case-history', '_blank');
+                            }
+                          }}
+                          type="button"
+                          disabled={!generatedUserId}
+                        >
+                          Case History
+                        </button>
+                      </div>
+                      {!pgDepartmentKey.includes('oral') && (
+                        <button
+                          className="general-case-btn"
+                          onClick={() => {
+                            const pid = String(generatedUserId || '').trim();
+                            const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
+                            if (pid) {
+                              window.open(`/general-case-view?patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname)}`, '_blank');
+                            }
+                          }}
+                          type="button"
+                          disabled={!canNavigateCases}
+                        >
+                          View Full General Case Sheet
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2969,16 +2887,28 @@ const PGDashboard = ({ brandTitleOverride }) => {
                                         {hasPendingReschedule ? (
                                           <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
                                         ) : (
-                                          <button
-                                            type="button"
-                                            className="pg-premium-btn btn-reschedule"
-                                            onClick={() => beginRescheduleForAppointment(appointment)}
-                                            disabled={isSubmitting}
-                                          >
-                                            Reschedule
-                                          </button>
+                                          <div className="pg-premium-badge badge-blue-solid" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', padding: '6px 12px' }}>
+                                            <button
+                                              type="button"
+                                              className="btn-reschedule-inline"
+                                              onClick={() => beginRescheduleForAppointment(appointment)}
+                                              disabled={isSubmitting}
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#fff',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                padding: 0,
+                                                fontSize: '12px'
+                                              }}
+                                            >
+                                              Reschedule
+                                            </button>
+                                            <span style={{ borderLeft: '1px solid rgba(255,255,255,0.3)', height: '12px' }}></span>
+                                            <span style={{ color: '#fde68a', fontWeight: '600' }}>Pending</span>
+                                          </div>
                                         )}
-                                        <span className="pg-premium-badge badge-orange">Pending</span>
                                       </div>
                                     )
                                   ) : appointmentStatus === 'reschedule_requested' ? (

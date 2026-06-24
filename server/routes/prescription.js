@@ -316,7 +316,7 @@ router.post('/', auth, requireRole(['doctor', 'chief-doctor', 'pg', 'ug']), asyn
     if (appointment) {
       await Appointment.findOneAndUpdate(
         { bookingId: appointment.bookingId },
-        { $set: { status: 'completed', needsGeneralApproval: false, needsPgApproval: false } },
+        { $set: { needsGeneralApproval: false, needsPgApproval: false } },
         { new: true }
       );
     }

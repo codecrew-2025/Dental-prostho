@@ -135,6 +135,9 @@ const OralMedicine = () => {
       if (typeof prefill.digitalSignature === 'string' && prefill.digitalSignature.startsWith('data:')) {
         setSignaturePreview(prefill.digitalSignature);
       }
+      if (typeof prefill.xrayImage === 'string' && prefill.xrayImage.startsWith('data:')) {
+        setXrayPreview(prefill.xrayImage);
+      }
       setCurrentPage(0);
       setIsDraftHydrated(true);
       return;
@@ -146,13 +149,13 @@ const OralMedicine = () => {
         const draft = await loadCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
         if (!cancelled && draft?.data?.form) {
           const currentName = String(localStorage.getItem('CurrentpatientName') || '').trim();
-          const { age: _a, sex: _s, patientName: _n,
-                  chiefComplaint: _cc, historyOfPresentIllness: _hpi,
-                  pastMedicalHistory: _pmh, pastSurgicalHistory: _psh,
-                  pastDentalHistory: _pdh, ...draftForm } = draft.data.form;
+          const { age: _a, sex: _s, patientName: _n, ...draftForm } = draft.data.form;
           setForm(prev => ({ ...prev, ...draftForm, ...(currentName ? { patientName: currentName } : {}) }));
           if (typeof draft.data.signaturePreview === 'string' && draft.data.signaturePreview.trim()) {
             setSignaturePreview(draft.data.signaturePreview);
+          }
+          if (typeof draft.data.xrayPreview === 'string' && draft.data.xrayPreview.trim()) {
+            setXrayPreview(draft.data.xrayPreview);
           }
           // Always start from page 0 — never restore the last page from draft
           setCurrentPage(0);
@@ -168,7 +171,7 @@ const OralMedicine = () => {
     if (!isDraftHydrated || !patientId) return;
     clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(async () => {
-      await saveCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY, step: currentPage, data: { form, signaturePreview } });
+      await saveCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY, step: currentPage, data: { form, signaturePreview, xrayPreview } });
       setDraftSaved(true);
       setTimeout(() => setDraftSaved(false), 2000);
     }, 1500);
@@ -179,7 +182,7 @@ const OralMedicine = () => {
     const handleBeforeUnload = () => {
       const pid = String(localStorage.getItem('CurrentpatientId') || '').trim();
       if (pid && isDraftHydrated) {
-        saveCaseDraft({ patientId: pid, routeKey: DRAFT_ROUTE_KEY, step: currentPage, data: { form, signaturePreview } });
+        saveCaseDraft({ patientId: pid, routeKey: DRAFT_ROUTE_KEY, step: currentPage, data: { form, signaturePreview, xrayPreview } });
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -234,11 +237,6 @@ const OralMedicine = () => {
         setForm(prev => ({
           ...prev,
           ...(mi.chiefComplaint               ? { chiefComplaint:          mi.chiefComplaint }               : {}),
-          ...(mi.historyOfPresentIllness       ? { historyOfPresentIllness: mi.historyOfPresentIllness }       : {}),
-          ...(mi.pastSurgicalHistory           ? { pastSurgicalHistory:     mi.pastSurgicalHistory }           : {}),
-          ...(mi.pastDentalHistory             ? { pastDentalHistory:       mi.pastDentalHistory }             : {}),
-          ...(Array.isArray(mi.pastMedicalHistory) && mi.pastMedicalHistory.length
-            ? { pastMedicalHistory: mi.pastMedicalHistory.filter(v => v !== 'None').join(', ') } : {}),
         }));
 
         const drug = toListString(p.vitals?.drugAllergies);
@@ -280,16 +278,16 @@ const OralMedicine = () => {
   }, []);
 
   useEffect(() => {
-    const pid = localStorage.getItem('CurrentpatientId') || '';
+    const pid = localStorage.getItem('CurrentpatientId') || patientId || '';
     const cached = readStoredGeneralCaseXray(pid);
     if (cached?.imageDataUrl) setXrayPreview(prev => prev || cached.imageDataUrl);
-  }, []);
+  }, [patientId]);
 
   useEffect(() => {
-    const pid = getCurrentPatientId();
+    const pid = getCurrentPatientId() || patientId;
     const shared = getSharedXrayImage(pid);
     if (shared?.dataUrl) setXrayPreview(prev => prev || shared.dataUrl);
-  }, []);
+  }, [patientId]);
 
   useEffect(() => { window.scrollTo(0, 0); }, [currentPage]);
 
@@ -337,6 +335,7 @@ const OralMedicine = () => {
     return () => clearTimeout(timer);
   }, [
     form.age,
+    form.chiefComplaint,
     form.dentalCaries,
     form.missingTeeth,
     form.gingival,
@@ -367,6 +366,7 @@ const OralMedicine = () => {
     if (!form.chiefComplaint.trim()) e.chiefComplaint = 'Chief complaint is required.';
     if (!form.sex) e.sex = 'Sex is required.';
     if (!form.age) e.age = 'Age is required.';
+    if (!form.treatmentPlan.trim()) e.treatmentPlan = 'Treatment plan is required.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -393,6 +393,13 @@ const OralMedicine = () => {
     if (!validate()) { showToast('Please fill required fields.', 'error'); return; }
     if (!patientId) { showToast('No patient loaded.', 'error'); return; }
     if (!doctorId) { showToast('Doctor identity not found. Please log in again.', 'error'); return; }
+    const referralDepartmentsCheck = Array.isArray(form.referralDepartments)
+      ? form.referralDepartments.map((d) => String(d || '').trim()).filter(Boolean).filter(d => d !== 'Other')
+      : [];
+    if (referralDepartmentsCheck.length === 0) {
+      showMessageBox('Referral Required', 'Please select at least one specialist department for referral before submitting.');
+      return;
+    }
     if (!token) {
       showMessageBox('Session Expired', 'Your session has expired. Please log in again.');
       setTimeout(() => navigate('/login'), 1500);
@@ -425,6 +432,7 @@ const OralMedicine = () => {
         doctorName,
         age: Number(form.age) || 0,
         gender: form.sex,
+        xrayImage: xrayPreview || '',
       };
       if (payload.digitalSignature instanceof File) {
         payload.digitalSignature = await fileToDataUrl(payload.digitalSignature);
@@ -459,7 +467,8 @@ const OralMedicine = () => {
         return;
       }
       if (res.ok) {
-        if (referralDepartments.length > 0) {
+        const validReferralDepartments = referralDepartments.filter(d => d !== 'Other');
+        if (validReferralDepartments.length > 0) {
           const referralRes = await fetch(buildApiUrl('/api/general/save'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -480,7 +489,7 @@ const OralMedicine = () => {
               finalDiagnosis: form.clinicalDiagnosis,
               description: '',
               generalDescription: form.summary,
-              selectedDepartments: referralDepartments,
+              selectedDepartments: validReferralDepartments,
               treatmentPlan: form.treatmentPlan,
               xrayImage: xrayPreview || '',
             }),
@@ -502,7 +511,7 @@ const OralMedicine = () => {
 
         await clearCaseDraft({ patientId, routeKey: DRAFT_ROUTE_KEY });
         const pName = form.patientName || patientName || 'Patient';
-        const referral = referralDepartments.length ? `\n\nReferred priority: ${referralDepartments.join(' → ')}` : '';
+        const referral = validReferralDepartments.length ? `\n\nReferred priority: ${validReferralDepartments.join(' → ')}` : '';
         showMessageBox('✅ General Department Case Sheet Submitted', `Case sheet for ${pName} has been completed by General Department.\n\nInitial diagnosis and referral recommendations have been recorded successfully.${referral}`);
         const role = user?.role || localStorage.getItem('role') || '';
         const dashRoute = role.includes('ug') ? '/ug-dashboard'
@@ -612,7 +621,7 @@ const OralMedicine = () => {
       {ta('chiefComplaint', 4, true)}
       {errors.chiefComplaint && <p className="omr-error">{errors.chiefComplaint}</p>}
       <p className="omr-section-title">HISTORY OF PRESENTING ILLNESS:</p>
-      {ta('historyOfPresentIllness', 4, true)}
+      {ta('historyOfPresentIllness', 6)}
       <p className="omr-section-title">PAST MEDICAL HISTORY:</p>
       {ta('pastMedicalHistory', 4)}
       <p className="omr-section-title">PAST SURGICAL HISTORY:</p>
@@ -722,61 +731,6 @@ const OralMedicine = () => {
     <div className="omr-page-content">
       <h2 className="omr-sheet-title">ORAL MEDICINE AND RADIOLOGY</h2>
 
-      {/* --- AI Recommendations Section --- */}
-      <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(165,180,252,0.4)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 12px', color: '#a5b4fc', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🤖</span> AI Clinical Recommendations
-        </h3>
-
-        {clinicalIssues.length > 0 ? (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            <div>
-              <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Detected Issues:</strong>
-              <ul style={{ margin: '4px 0 0', paddingLeft: '20px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                {clinicalIssues.map((issue, idx) => <li key={idx}>{issue.name}</li>)}
-              </ul>
-            </div>
-
-            {recommendedInvestigations.length > 0 && (
-              <div>
-                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Suggested Investigations:</strong>
-                <ul style={{ margin: '4px 0 0', paddingLeft: '20px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                  {recommendedInvestigations.map((inv, idx) => <li key={idx}>{inv}</li>)}
-                </ul>
-              </div>
-            )}
-
-            {recommendedDepartments.length > 0 && (
-              <div>
-                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Suggested Referrals:</strong>
-                <div style={{ margin: '4px 0 0', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                  {recommendedDepartments.join(', ')}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Urgency Level:</strong>
-              <div style={{ margin: '4px 0 0', color: urgencyLevel.level === 'EMERGENCY' ? '#fca5a5' : urgencyLevel.level === 'URGENT' ? '#fcd34d' : '#86efac', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                {urgencyLevel.level} - {urgencyLevel.recommendation}
-              </div>
-            </div>
-
-            {patientEducation && (
-              <div>
-                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>Patient Education:</strong>
-                <p style={{ margin: '4px 0 0', color: '#c7d2fe', fontSize: '0.85rem', whiteSpace: 'pre-line' }}>
-                  {patientEducation}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.85rem', fontStyle: 'italic' }}>Fill out examination fields to generate AI recommendations.</p>
-        )}
-      </div>
-      {/* --- End AI Recommendations Section --- */}
-
       <p className="omr-section-title">Provisional Diagnosis:</p>{ta('provisionalDiagnosis', 3)}
       <p className="omr-section-title">Differential Diagnosis:</p>{ta('differentialDiagnosis', 3)}
       <p className="omr-section-title">Investigation:</p>
@@ -806,7 +760,8 @@ const OralMedicine = () => {
       </div>
       <p className="omr-section-title">Clinical Diagnosis:</p>{ta('clinicalDiagnosis', 3)}
 
-      <p className="omr-section-title" style={{ marginTop: 24 }}>Treatment planning:</p>{ta('treatmentPlan', 4)}
+      <p className="omr-section-title" style={{ marginTop: 24 }}>Treatment planning: <span style={{ color: '#f87171' }}>*</span></p>{ta('treatmentPlan', 4)}
+      {errors.treatmentPlan && <p className="omr-error">{errors.treatmentPlan}</p>}
       <p className="omr-section-title">Prognosis:</p>{ta('prognosis', 3)}
 
       <p className="omr-section-title" style={{ marginTop: 24 }}>CHARGEABLE INVESTIGATIONS:</p>
@@ -931,7 +886,7 @@ const OralMedicine = () => {
         borderRadius: 8, maxWidth: 400,
       }}>
         <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-          Treating Doctor
+          Doctor
         </p>
         <p style={{ margin: '0 0 2px', fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
           {doctorName || '—'}
@@ -1062,15 +1017,6 @@ const OralMedicine = () => {
             <>
               <button type="button" className="omr-btn-submit" onClick={() => handleSubmit('prescription')} disabled={submitting}>
                 {submitting ? 'Submitting...' : 'Submit Case Sheet ✓'}
-              </button>
-              <button
-                type="button"
-                className="omr-btn-prev"
-                onClick={() => handleSubmit('prescription')}
-                disabled={submitting}
-                style={{ background: 'rgba(99,102,241,0.25)', border: '1.5px solid rgba(165,180,252,0.5)', color: '#c7d2fe' }}
-              >
-                📋 Prescription
               </button>
             </>
           )}

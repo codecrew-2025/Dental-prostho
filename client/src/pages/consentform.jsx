@@ -216,7 +216,7 @@ const App = () => {
     };
   }, [recordedVideoURL]);
 
-  // Load draft on mount/patientId change
+  // Load draft on mount/patientId change (only if from today)
   useEffect(() => {
     if (!patientId) {
       setIsDraftLoaded(true);
@@ -233,6 +233,17 @@ const App = () => {
           return;
         }
 
+        // Only load draft if it was updated today
+        if (draft.updatedAt) {
+          const draftDate = new Date(draft.updatedAt).toDateString();
+          const today = new Date().toDateString();
+          if (draftDate !== today) {
+            console.log('[ConsentForm] Draft is from a different day, ignoring:', draftDate);
+            setIsDraftLoaded(true);
+            return;
+          }
+        }
+
         const d = draft.data;
 
         if (d.formData) {
@@ -245,9 +256,22 @@ const App = () => {
           }));
         }
 
-        if (d.recordedVideoURL) setRecordedVideoURL(d.recordedVideoURL);
-        if (d.recordedVideoData) setRecordedVideoData(d.recordedVideoData);
-        if (d.permissionGranted) setPermissionGranted(d.permissionGranted);
+        // Restore recorded video from data URL (data URLs survive page refresh unlike blob URLs)
+        if (d.recordedVideoData && typeof d.recordedVideoData === 'string' && d.recordedVideoData.startsWith('data:')) {
+          try {
+            const response = await fetch(d.recordedVideoData);
+            const blob = await response.blob();
+            const newObjectUrl = URL.createObjectURL(blob);
+            if (!cancelled) {
+              setRecordedVideoURL(newObjectUrl);
+              setRecordedVideoData(d.recordedVideoData);
+            }
+          } catch (err) {
+            console.warn('[ConsentForm] Could not restore video from draft data:', err);
+          }
+        }
+
+        // Do NOT restore permissionGranted or recordedVideoURL (blob URLs expire on refresh)
 
         console.log('[ConsentForm] Draft loaded for patient:', patientId);
       } catch (error) {
@@ -800,15 +824,16 @@ const App = () => {
                     <button type="button" style={styles.stopButton} onClick={stopRecording}>⏹ Stop Recording</button>
                   )}
                 </div>
-                {recordedVideoURL && (
-                  <div style={{ marginTop: "12px" }}>
-                    <p style={{ fontWeight: "bold", color: "green", marginBottom: "6px" }}>✅ Recording saved!</p>
-                    <video src={recordedVideoURL} controls style={styles.videoPreview} />
-                    <a href={recordedVideoURL} download="consent-video.webm" style={styles.downloadLink}>
-                      ⬇️ Download Recording
-                    </a>
-                  </div>
-                )}
+              </div>
+            )}
+
+            {recordedVideoURL && (
+              <div style={{ marginTop: "12px" }}>
+                <p style={{ fontWeight: "bold", color: "green", marginBottom: "6px" }}>✅ Recording saved!</p>
+                <video src={recordedVideoURL} controls style={styles.videoPreview} />
+                <a href={recordedVideoURL} download="consent-video.webm" style={styles.downloadLink}>
+                  ⬇️ Download Recording
+                </a>
               </div>
             )}
           </div>

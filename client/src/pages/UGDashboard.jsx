@@ -191,9 +191,6 @@ const UGDashboard = () => {
   const [rescheduleSubmittingBookingId, setRescheduleSubmittingBookingId] = useState('');
   const [bookedSlotsByDate, setBookedSlotsByDate] = useState({});
   const [bookedSlotsLoadingDate, setBookedSlotsLoadingDate] = useState('');
-  const [generalCasePreview, setGeneralCasePreview] = useState(null);
-  const [generalCasePreviewLoading, setGeneralCasePreviewLoading] = useState(false);
-  const [generalCasePreviewError, setGeneralCasePreviewError] = useState('');
   const [showMessageBox, setShowMessageBox] = useState(false);
   const [messageTitle, setMessageTitle] = useState('');
   const [messageContent, setMessageContent] = useState('');
@@ -782,56 +779,6 @@ const UGDashboard = () => {
     }
   };
 
-  const fetchGeneralCasePreview = async (patientId) => {
-    const resolvedPatientId = String(patientId || '').trim();
-    if (!resolvedPatientId) {
-      setGeneralCasePreview(null);
-      setGeneralCasePreviewError('Patient ID missing.');
-      return;
-    }
-
-    setGeneralCasePreviewLoading(true);
-    setGeneralCasePreviewError('');
-    setGeneralCasePreview(null);
-
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(
-        buildApiUrl(`/api/general/patient/${encodeURIComponent(resolvedPatientId)}`),
-        {
-          headers: token
-            ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-            : { 'Content-Type': 'application/json' },
-        }
-      );
-
-      if (res.status === 401) {
-        await ensureActiveSession(res, 'Token expired');
-        return;
-      }
-
-      const json = await res.json();
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.message || 'Failed to load General Case Sheet');
-      }
-
-      const cases = Array.isArray(json.data) ? json.data : [];
-      const latest = [...cases].sort((a, b) => {
-        const aTime = new Date(a?.createdAt || a?.updatedAt || 0).getTime();
-        const bTime = new Date(b?.createdAt || b?.updatedAt || 0).getTime();
-        return bTime - aTime;
-      })[0] || null;
-
-      setGeneralCasePreview(latest);
-    } catch (error) {
-      console.error('Failed to load general case preview:', error);
-      setGeneralCasePreview(null);
-      setGeneralCasePreviewError(error.message || 'Failed to load General Case Sheet');
-    } finally {
-      setGeneralCasePreviewLoading(false);
-    }
-  };
-
   // Options for form fields
   const hpiOptions = ["Diabetes", "Hypertension", "Asthma", "Hyperlipidemia", "Thyroid", "None"];
   const pastMedicalHistoryOptions = ["Diabetes", "Hypertension", "Osteoporosis", "Arthritis", "Heart Disease", "None"];
@@ -1223,9 +1170,52 @@ const UGDashboard = () => {
         return rows;
       }
 
-      // UG non-PHD doctors: no case sheet history endpoint — show empty
-      setPgCaseSheetHistory([]);
-      return [];
+      const res = await fetch(buildApiUrl('/api/casesheets/pg/history'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.status === 401) {
+        await ensureActiveSession(res, 'Token expired');
+        return [];
+      }
+
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || 'Failed to load case sheet history');
+      }
+
+      const rows = Array.isArray(json.data) ? json.data : [];
+      setPgCaseSheetHistory(rows);
+      if ((!Array.isArray(rows) || rows.length === 0)) {
+        const currentPatientId = localStorage.getItem('CurrentpatientId') || '';
+        if (currentPatientId) {
+          try {
+            const genRes = await fetch(buildApiUrl(`/api/general/patient/${encodeURIComponent(currentPatientId)}`), { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+            if (genRes.ok) {
+              const genJson = await genRes.json().catch(() => null);
+              const genRows = Array.isArray(genJson?.data) ? genJson.data : [];
+              const mapped = genRows.map(item => ({
+                caseId: String(item._id || ''),
+                department: 'General Case',
+                departmentKey: 'general',
+                patientId: String(item.patientId || '').trim(),
+                patientName: String(item.patientName || '').trim(),
+                doctorId: String(item.doctorId || '').trim(),
+                doctorName: String(item.doctorName || '').trim(),
+                chiefApproval: String(item.chiefApproval || ''),
+                createdAt: item.createdAt || null,
+              }));
+              if (mapped.length) setPgCaseSheetHistory(mapped);
+            }
+          } catch (err) {
+            console.error('[UGDashboard] fallback general/patient fetch failed', err);
+          }
+        }
+      }
+      return rows;
     } catch (error) {
       console.error('Failed to fetch PG case sheet history', error);
       setPgCaseSheetHistoryError(error.message || 'Failed to load case sheet history');
@@ -1449,10 +1439,13 @@ const UGDashboard = () => {
     const departmentRoute = isPublicHealthDept
       ? (ensuredCaseId ? '/general-case-view' : '/general-case-sheet')
       : getCaseRouteForDepartment(resolvedDepartmentLabel);
-    const separator = departmentRoute.includes('?') ? '&' : '?';
-    const caseIdParam = ensuredCaseId ? `&caseId=${encodeURIComponent(ensuredCaseId)}` : '';
-    const patientRouteUrl = `${departmentRoute}${separator}patientId=${encodeURIComponent(currentPatientId)}&patientName=${encodeURIComponent(currentPatientName || currentPatientId)}&department=${encodeURIComponent(resolvedDepartmentLabel)}${caseIdParam}`;
-    window.open(patientRouteUrl, '_blank');
+    const queryParams = new URLSearchParams();
+    queryParams.set('patientId', currentPatientId);
+    queryParams.set('patientName', currentPatientName || currentPatientId);
+    queryParams.set('department', resolvedDepartmentLabel);
+    if (ensuredCaseId) queryParams.set('caseId', ensuredCaseId);
+    const patientRouteUrl = `${departmentRoute}?${queryParams.toString()}`;
+    navigate(patientRouteUrl, { state: { requestConsentAfterEntry: true } });
   };
 
   const getResolvedPractitionerId = () => {
@@ -1781,9 +1774,6 @@ const UGDashboard = () => {
       populateFormWithPatientData(registeredPatient);
       setGeneratedUserId(registeredPatient.patientId || enteredId);
       showMessage(`Patient details loaded for ID: ${registeredPatient.patientId || enteredId}`, 'success');
-
-      // Load latest General Case Sheet as a preview
-      fetchGeneralCasePreview(registeredPatient.patientId || enteredId);
 
       // Optional: also merge any existing doctor-patient details for this ID
       try {
@@ -2311,54 +2301,28 @@ const UGDashboard = () => {
                   </div>
                 )}
 
-                {/* General Case Sheet Preview — not shown for PHD doctors */}
+                {/* Go to Department Case Sheet */}
                 {showUserIdDisplay && !isPublicHealthDentistry && (
-                  <div className="general-case-preview-section" style={{ margin: '16px 0', padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>General Case Sheet Preview</div>
-                    {generalCasePreviewLoading ? (
-                      <div className="chief-inline-loading">Loading preview...</div>
-                    ) : generalCasePreviewError ? (
-                      <div className="error-message">{generalCasePreviewError}</div>
-                    ) : generalCasePreview ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12 }}>
-                        <div>
-                          <div style={{ marginBottom: 4 }}><strong>Chief Complaint:</strong> {generalCasePreview.chiefComplaint || '—'}</div>
-                          <div style={{ marginBottom: 4 }}><strong>Present Illness:</strong> {generalCasePreview.presentIllness || '—'}</div>
-                          <div style={{ marginBottom: 4 }}><strong>Clinical Findings:</strong> {generalCasePreview.clinicalFindings || '—'}</div>
-                          <div><strong>Final Diagnosis:</strong> {generalCasePreview.finalDiagnosis || generalCasePreview.provisionalDiagnosis || '—'}</div>
-                        </div>
-                        <div style={{ textAlign: 'center', minWidth: 80 }}>
-                          <div style={{ fontSize: 12, marginBottom: 4, color: '#64748b' }}>X-ray</div>
-                          {String(generalCasePreview.xrayImage || '').trim() ? (
-                            <img
-                              src={String(generalCasePreview.xrayImage || '').trim()}
-                              alt="X-ray"
-                              style={{ maxWidth: 80, maxHeight: 80, borderRadius: 4, border: '1px solid #cbd5e1' }}
-                            />
-                          ) : (
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>No X-ray</div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ color: '#64748b', fontSize: 13 }}>No General Case Sheet found for this patient.</div>
-                    )}
-                    <div style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        className="view-button"
-                        onClick={() => {
-                          const pid = String(generatedUserId || '').trim();
-                          const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
-                          if (pid) {
-                            window.open(`/general-case-view?patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname)}`, '_blank');
-                          }
-                        }}
-                        disabled={!generatedUserId}
-                      >
-                        View Full General Case Sheet
-                      </button>
-                    </div>
+                  <div style={{ margin: '16px 0' }}>
+                    <button
+                      type="button"
+                      className="view-button"
+                      onClick={() => {
+                        const pid = String(generatedUserId || '').trim();
+                        const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
+                        if (pid) {
+                          const deptRoute = getCaseRouteForDepartment(ugDepartmentLabel || user?.department || '');
+                          const separator = deptRoute.includes('?') ? '&' : '?';
+                          window.open(
+                            `${deptRoute}${separator}patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname || pid)}&department=${encodeURIComponent(ugDepartmentLabel || user?.department || '')}`,
+                            '_blank'
+                          );
+                        }
+                      }}
+                      disabled={!generatedUserId}
+                    >
+                      Go to Department Case Sheet
+                    </button>
                   </div>
                 )}
 
@@ -2698,18 +2662,52 @@ const UGDashboard = () => {
                     )}
 
                     {/* Navigation buttons */}
-                    <div className="form-actions">
-                      <button className="save-btn" onClick={handleSavePatient} disabled={isLoading}>
-                        {isLoading ? '...Saving...' : 'Save Patient Details'}
-                      </button>
-                      <button
-                        className="case-files-btn"
-                        onClick={openAssignedCaseRoute}
-                        type="button"
-                        disabled={!canNavigateCases}
-                      >
-                        Go to Department Case Sheet
-                      </button>
+                    <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+                      <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button className="save-btn" onClick={handleSavePatient} disabled={isLoading}>
+                          {isLoading ? '...Saving...' : 'Save Patient Details'}
+                        </button>
+                        <button
+                          className="case-files-btn"
+                          onClick={openAssignedCaseRoute}
+                          type="button"
+                          disabled={!canNavigateCases}
+                        >
+                          Go to Department Case Sheet
+                        </button>
+                        <button
+                          className="case-history-btn"
+                          onClick={() => {
+                            const pid = String(generatedUserId || '').trim();
+                            const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
+                            if (pid) {
+                              localStorage.setItem('CurrentpatientId', pid);
+                              if (pname) localStorage.setItem('CurrentpatientName', pname);
+                              window.open('/case-history', '_blank');
+                            }
+                          }}
+                          type="button"
+                          disabled={!generatedUserId}
+                        >
+                          Case History
+                        </button>
+                      </div>
+                      {!ugDepartmentKey.includes('oral') && (
+                        <button
+                          className="general-case-btn"
+                          onClick={() => {
+                            const pid = String(generatedUserId || '').trim();
+                            const pname = String(localStorage.getItem('CurrentpatientName') || '').trim();
+                            if (pid) {
+                              window.open(`/general-case-view?patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname)}`, '_blank');
+                            }
+                          }}
+                          type="button"
+                          disabled={!canNavigateCases}
+                        >
+                          View Full General Case Sheet
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3087,16 +3085,28 @@ const UGDashboard = () => {
                                         {hasPendingReschedule ? (
                                           <span className="pg-premium-badge badge-blue-solid">Reschedule Pending</span>
                                         ) : (
-                                          <button
-                                            type="button"
-                                            className="pg-premium-btn btn-reschedule"
-                                            onClick={() => beginRescheduleForAppointment(appointment)}
-                                            disabled={isSubmitting}
-                                          >
-                                            Reschedule
-                                          </button>
+                                          <div className="pg-premium-badge badge-blue-solid" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', padding: '6px 12px' }}>
+                                            <button
+                                              type="button"
+                                              className="btn-reschedule-inline"
+                                              onClick={() => beginRescheduleForAppointment(appointment)}
+                                              disabled={isSubmitting}
+                                              style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#fff',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                padding: 0,
+                                                fontSize: '12px'
+                                              }}
+                                            >
+                                              Reschedule
+                                            </button>
+                                            <span style={{ borderLeft: '1px solid rgba(255,255,255,0.3)', height: '12px' }}></span>
+                                            <span style={{ color: '#fde68a', fontWeight: '600' }}>Pending</span>
+                                          </div>
                                         )}
-                                        <span className="pg-premium-badge badge-orange">Pending</span>
                                       </div>
                                     )
                                   ) : appointmentStatus === 'reschedule_requested' ? (

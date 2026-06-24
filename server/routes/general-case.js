@@ -130,8 +130,8 @@ const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
 
   const eligibleDoctors = sortUsersForAssignment(
     doctors.filter((doctor) => {
-      const departmentKey = normalizeDepartment(doctor.department);
-      return !GENERAL_DEPARTMENT_KEYS.has(departmentKey) && aliases.includes(departmentKey);
+      const deptKey = normalizeLabelToDepartmentKey(doctor.department);
+      return deptKey !== 'general' && aliases.includes(deptKey);
     })
   );
 
@@ -474,70 +474,6 @@ router.post(['/', '/save'], auth, requireRole(['doctor', 'chief', 'pg', 'ug']), 
     }
 
     await generalCase.save();
-
-    // 🔥 FIX: Mark the appointment as ASSIGNED and update PG/UG assignment fields
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const pgIdentity = String(req.user?.Identity || '').trim();
-
-      // First try to find the appointment directly assigned to this PG/UG
-      let recentAppointment = pgIdentity ? await Appointment.findOne({
-        $or: [
-          { assigned_pg_ug_id: pgIdentity },
-          { assignedPgUgId: pgIdentity },
-          { pgDoctorId: pgIdentity },
-          { doctorId: pgIdentity },
-        ],
-        patientId,
-        appointmentDate: { $gte: todayStr },
-        status: { $nin: ['cancelled', 'completed', 'closed'] },
-        isProcessed: { $ne: true },
-      }).sort({ createdAt: -1 }) : null;
-
-      // Fallback: find any unprocessed upcoming appointment for this patient in the same department
-      if (!recentAppointment) {
-        const userDepartment = String(req.user?.department || '').trim();
-        const normalizedUserDept = normalizeDepartment(userDepartment);
-        recentAppointment = await Appointment.findOne({
-          patientId,
-          appointmentDate: { $gte: todayStr },
-          status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress', 'rescheduled'] },
-          isProcessed: { $ne: true },
-        }).sort({ createdAt: -1 });
-
-        // If found but department doesn't match, skip it
-        if (recentAppointment && normalizedUserDept) {
-          const apptDeptKey = normalizeLabelToDepartmentKey(recentAppointment.currentDepartment || '');
-          const userDeptKey = normalizeLabelToDepartmentKey(userDepartment);
-          if (apptDeptKey && userDeptKey && apptDeptKey !== userDeptKey) {
-            recentAppointment = null;
-          }
-        }
-      }
-
-      if (recentAppointment) {
-        recentAppointment.status = 'pending'; // PENDING - needs manual approval in the new department
-        recentAppointment.isProcessed = false;
-        recentAppointment.doctorId = assignedPg?.Identity || assignedPg?._id || '';
-        recentAppointment.assignedPgUgId = assignedPg?.Identity || '';
-        recentAppointment.assigned_pg_ug_id = assignedPg?.Identity || '';
-        recentAppointment.pgDoctorId = assignedPg?.Identity || '';
-        recentAppointment.supervisingDeptDoctorId = specialistDoctor?.Identity || '';
-        recentAppointment.supervising_dept_doctor_id = specialistDoctor?.Identity || '';
-        recentAppointment.deptDoctorId = specialistDoctor?.Identity || '';
-        recentAppointment.generalDoctorId = req.user.Identity || '';
-        // Move appointment to the referred department so all in that dept can see it
-        if (referredDepartment) {
-          recentAppointment.currentDepartment = referredDepartment;
-        }
-        await recentAppointment.save();
-        console.log(`✅ Marked appointment ${recentAppointment.bookingId} as ASSIGNED for patient ${patientId}`);
-        console.log(`✅ Assigned PG ${assignedPg?.Identity} and Dept Doctor ${specialistDoctor?.Identity} to appointment`);
-      }
-    } catch (appointmentError) {
-      console.error('⚠️ Failed to mark appointment as assigned:', appointmentError);
-      // Don't fail the entire request if appointment update fails
-    }
 
     res.status(201).json({
       success: true,

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../config/api';
 import './OralMedicineView.css';
@@ -85,6 +85,17 @@ const OralMedicineView = ({ caseData: propCaseData }) => {
               {field('NAME:', caseData.patientName)}
               {field('OP.NO:', caseData.opNo)}
             </div>
+
+            {caseData.xrayImage && (
+              <div style={{ marginTop: 16 }}>
+                <h3>ORAL X-RAY:</h3>
+                <img
+                  src={caseData.xrayImage}
+                  alt="Oral X-ray"
+                  style={{ maxWidth: '100%', maxHeight: '400px', border: '1px solid #ccc', borderRadius: 6, marginTop: 8 }}
+                />
+              </div>
+            )}
 
             <h3>CHIEF COMPLAINT:</h3>
             {area('', caseData.chiefComplaint)}

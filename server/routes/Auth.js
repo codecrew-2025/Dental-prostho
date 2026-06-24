@@ -13,6 +13,18 @@ import requireRole from '../middleware/role.js';
 dotenv.config();
 const router = Router();
 
+const normalizeDepartment = (value) => String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '');
+const normalizeLabelToDepartmentKey = (departmentLabel) => {
+  const normalized = normalizeDepartment(departmentLabel);
+  if (normalized.startsWith('prostho') || normalized.startsWith('protho') || normalized.startsWith('prosth')) return 'prosthodontics';
+  if (normalized === 'pedodontics') return 'pedodontics';
+  if (normalized === 'periodontics') return 'periodontics';
+  if (normalized.includes('conservative') || normalized.includes('endodontic') || normalized.includes('endodontics')) return 'conservativedentistryandendodontics';
+  if (normalized.includes('oral') || normalized.includes('maxillofacial')) return 'oralandmaxillofacial';
+  if (['general', 'generaldentistry', 'oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology'].includes(normalized)) return 'general';
+  return normalized;
+};
+
 router.get('/debug/case2606009', async (req, res) => {
   try {
     const GeneralCase = (await import('../models/GeneralCase.js')).default;
@@ -2209,23 +2221,27 @@ router.get('/doctor/assigned-pgs/cases', auth, requireRole(['doctor']), async (r
       }
     };
 
-    const [pedodonticsModel, completeDentureModel, fpdModel, implantModel, implantPatientModel, partialModel] = await Promise.all([
+    const [oralCaseModel, pedodonticsModel, completeDentureModel, fpdModel, implantModel, implantPatientModel, partialModel, conservativeModel] = await Promise.all([
+      loadModel('../models/Oral-model.js'),
       loadModel('../models/PedodonticsCase.js'),
       loadModel('../models/CompleteDentureCase.js'),
       loadModel('../models/Fpd-model.js'),
       loadModel('../models/Implant-model.js'),
       loadModel('../models/ImplantPatient-model.js'),
       loadModel('../models/partial-model.js'),
+      loadModel('../models/ConservativeCase.js'),
     ]);
 
     const models = [
       { model: GeneralCase, department: 'General' },
+      { model: oralCaseModel, department: 'Oral Medicine and Radiology' },
       { model: pedodonticsModel, department: 'Pedodontics' },
       { model: completeDentureModel, department: 'Complete Denture' },
       { model: fpdModel, department: 'FPD' },
       { model: implantModel, department: 'Implant' },
       { model: implantPatientModel, department: 'Implant Patient Surgery' },
       { model: partialModel, department: 'Partial Denture' },
+      { model: conservativeModel, department: 'Conservative Dentistry' },
     ];
 
     const allCases = [];
@@ -2271,12 +2287,14 @@ router.patch('/doctor/assigned-pgs/cases/:caseId/approve', auth, requireRole(['d
 
     const modelMap = {
       'General': '../models/GeneralCase.js',
+      'Oral Medicine and Radiology': '../models/Oral-model.js',
       'Pedodontics': '../models/PedodonticsCase.js',
       'Complete Denture': '../models/CompleteDentureCase.js',
       'FPD': '../models/Fpd-model.js',
       'Implant': '../models/Implant-model.js',
       'Implant Patient Surgery': '../models/ImplantPatient-model.js',
       'Partial Denture': '../models/partial-model.js',
+      'Conservative Dentistry': '../models/ConservativeCase.js',
     };
 
     const modelPath = modelMap[department];
@@ -2294,23 +2312,183 @@ router.patch('/doctor/assigned-pgs/cases/:caseId/approve', auth, requireRole(['d
       return res.status(404).json({ success: false, message: 'Case not found' });
     }
 
-    // Verify the case belongs to an assigned PG
-    const pg = await User.findOne({
-      Identity: caseItem.doctorId,
-      role: 'pg',
-      createdBy: req.user._id,
-    });
+    // Verify the case belongs to an assigned PG, or was submitted by the doctor themselves,
+    // or by a PG/UG created by the approving doctor (covers all legitimate submission paths)
+    const caseSubmitter = await User.findOne({ Identity: caseItem.doctorId }).lean();
+    const isOwnCase = caseItem.doctorId === req.user.Identity;
+    const isPGCreatedByDoctor = caseSubmitter && caseSubmitter.role === 'pg' && String(caseSubmitter.createdBy) === String(req.user._id);
+    const isUGCreatedByDoctor = caseSubmitter && caseSubmitter.role === 'ug' && String(caseSubmitter.createdBy) === String(req.user._id);
+    const isDoctorInSameDept = caseSubmitter && caseSubmitter.role === 'doctor' && normalizeDepartment(caseSubmitter.department || '') === normalizeDepartment(req.user.department || '');
 
-    if (!pg) {
-      return res.status(403).json({ success: false, message: 'You can only approve cases from your assigned PGs' });
+    if (!isOwnCase && !isPGCreatedByDoctor && !isUGCreatedByDoctor && !isDoctorInSameDept) {
+      return res.status(403).json({ success: false, message: 'You can only approve cases from your assigned PGs/UGs or colleagues in your department' });
     }
 
     // Update the case
+    const isApproved = chiefApproval === 'Approved';
     caseItem.chiefApproval = chiefApproval || 'Approved';
     caseItem.approvedBy = approvedBy || req.user.name;
     caseItem.approvedAt = new Date();
-
     await caseItem.save();
+
+    // If approved AND this case has a referral (GeneralCase), advance the appointment
+    if (isApproved && caseItem.patientId) {
+      try {
+        const { default: GeneralCase } = await import('../models/GeneralCase.js');
+        const { default: Appointment } = await import('../models/AppoitmentBooked.js');
+        const { pickSpecialistDoctorForDepartment, assignReferralToPg: assignPgToReferral } = await import('../utils/referralFlow.js');
+
+        // Find the most recent GeneralCase for this patient with an active referral
+        console.log(`[APPROVAL] Looking up GeneralCase for patient: ${caseItem.patientId}`);
+        let generalCase = await GeneralCase.findOne({
+          patientId: caseItem.patientId,
+          $or: [{ referralCompletedAt: { $exists: false } }, { referralCompletedAt: null }],
+          referredDepartment: { $exists: true, $ne: '' },
+        }).sort({ createdAt: -1 });
+
+        console.log(`[APPROVAL] GeneralCase found: ${generalCase ? 'YES' : 'NO'}${generalCase ? ` (referredDept: ${generalCase.referredDepartment}, assignedPgId: ${generalCase.assignedPgId})` : ''}`);
+
+        // If no GeneralCase exists, check the oral case for referredDepartment and create one on-the-fly
+        if (!generalCase) {
+          const oralReferredDept = caseItem.referredDepartment || '';
+          if (oralReferredDept && oralReferredDept !== 'Other') {
+            console.log(`[APPROVAL] No GeneralCase found. Creating one from oral case data (referredDept: ${oralReferredDept})...`);
+            try {
+              const specialistDoctor = await pickSpecialistDoctorForDepartment(oralReferredDept);
+              const newGC = new GeneralCase({
+                patientId: caseItem.patientId,
+                patientName: caseItem.patientName || '',
+                doctorId: caseItem.doctorId || '',
+                doctorName: '',
+                generalDoctorId: caseItem.doctorId || '',
+                generalDoctorName: '',
+                chiefComplaint: caseItem.chiefComplaint || '',
+                presentIllness: '', pastMedical: '', pastDental: '', personalHistory: '', familyHistory: '',
+                clinicalFindings: '', provisionalDiagnosis: '', investigations: '', finalDiagnosis: '',
+                description: '', generalDescription: '',
+                selectedDepartments: [oralReferredDept],
+                referralCurrentIndex: 0, referralHistory: [], referralCompletedAt: null,
+                treatmentPlan: 'Refer to specialist', xrayImage: '',
+                referredDepartment: oralReferredDept,
+                specialistDoctorId: specialistDoctor?.Identity || '',
+                specialistDoctorName: specialistDoctor?.name || '',
+                specialistAssignedAt: specialistDoctor ? new Date() : null,
+                specialistStatus: specialistDoctor ? 'pending' : 'not-required',
+                assignedPgId: '', assignedPgName: '', pgAssignedAt: null,
+                chiefApproval: '', digitalSignature: '', specialistReviewedAt: null,
+              });
+              await newGC.save();
+              generalCase = newGC;
+              console.log(`[APPROVAL] Auto-created GeneralCase: ${newGC._id}`);
+            } catch (gcErr) {
+              console.error(`[APPROVAL] Failed to auto-create GeneralCase:`, gcErr.message);
+            }
+          }
+        }
+
+        if (generalCase) {
+          // Find the appointment for this patient
+          let appointment = await Appointment.findOne({
+            patientId: caseItem.patientId,
+            status: { $nin: ['cancelled', 'completed', 'closed'] },
+          }).sort({ createdAt: -1 });
+
+          console.log(`[APPROVAL] Appointment found: ${appointment ? 'YES' : 'NO'}${appointment ? ` (dept: ${appointment.currentDepartment}, status: ${appointment.status})` : ''}`);
+
+          // Fallback: also check for 'assigned' or 'in_progress' status
+          if (!appointment) {
+            appointment = await Appointment.findOne({
+              patientId: caseItem.patientId,
+              status: { $nin: ['cancelled'] },
+            }).sort({ createdAt: -1 });
+            if (appointment) {
+              console.log(`[APPROVAL] Found appointment via fallback (status: ${appointment.status})`);
+            }
+          }
+
+          if (appointment) {
+            const referredDepartment = generalCase.referredDepartment;
+
+            // Skip referral transfer for 'Other' department - no specialist can be assigned
+            if (referredDepartment && referredDepartment !== 'Other') {
+            // Use shared round-robin assignment from referralFlow.js
+            console.log(`[APPROVAL] Looking up specialist for department: ${referredDepartment}`);
+            let specialistDoctor = await pickSpecialistDoctorForDepartment(referredDepartment);
+            console.log(`[APPROVAL] Specialist found: ${specialistDoctor ? specialistDoctor.Identity : 'NONE'}`);
+
+            // Fallback: if round-robin finds no specialist, find any doctor in the department
+            if (!specialistDoctor) {
+              console.log(`[APPROVAL] Round-robin returned no specialist. Trying fallback...`);
+              const { User: UserModel } = await import('../models/User.js');
+              const deptKey = normalizeLabelToDepartmentKey(referredDepartment);
+              const allDoctors = await UserModel.find({ role: 'doctor' }, { _id: 1, name: 1, Identity: 1, department: 1 }).lean();
+              specialistDoctor = allDoctors.find(d => normalizeLabelToDepartmentKey(d.department || '') === deptKey) || null;
+              if (specialistDoctor) {
+                console.log(`[APPROVAL] Fallback found specialist: ${specialistDoctor.Identity} (${specialistDoctor.name})`);
+              }
+            }
+
+            let assignedPg = null;
+            if (specialistDoctor?._id) {
+              const { User: UserModel } = await import('../models/User.js');
+              const pgs = await UserModel.find({ role: { $in: ['pg', 'ug'] }, createdBy: specialistDoctor._id }, { _id: 1, name: 1, Identity: 1, department: 1, role: 1 }).lean();
+              if (pgs.length) {
+                const sortById = (a, b) => String(a.Identity || '').localeCompare(String(b.Identity || ''), 'en', { numeric: true, sensitivity: 'base' });
+                assignedPg = pgs.sort(sortById)[0];
+              }
+            }
+
+            // Update the GeneralCase with the assigned specialist and PG
+            generalCase.specialistDoctorId = specialistDoctor?.Identity || '';
+            generalCase.specialistDoctorName = specialistDoctor?.name || '';
+            generalCase.specialistAssignedAt = new Date();
+            generalCase.specialistStatus = 'approved';
+            generalCase.specialistReviewedBy = req.user.name;
+            generalCase.specialistReviewedAt = new Date();
+            if (assignedPg) {
+              generalCase.assignedPgId = assignedPg.Identity || '';
+              generalCase.assignedPgName = assignedPg.name || '';
+              generalCase.pgAssignedAt = new Date();
+            }
+            console.log(`[APPROVAL] Saving GeneralCase (specialistId: ${generalCase.specialistDoctorId}, assignedPgId: ${generalCase.assignedPgId})...`);
+            await generalCase.save();
+            console.log(`[APPROVAL] GeneralCase saved`);
+
+            // Transfer the appointment to the referred department
+            // Appointment time = approval time
+            const approvalTime = new Date();
+            let hours = approvalTime.getHours();
+            const minutes = String(approvalTime.getMinutes()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12;
+
+            appointment.currentDepartment = referredDepartment;
+            appointment.appointmentTime = `${hours}:${minutes} ${ampm}`;
+            appointment.status = 'pending';
+            appointment.doctorId = assignedPg?.Identity || specialistDoctor?.Identity || '';
+            appointment.assignedPgUgId = assignedPg?.Identity || '';
+            appointment.assigned_pg_ug_id = assignedPg?.Identity || '';
+            appointment.pgDoctorId = assignedPg?.Identity || '';
+            appointment.supervisingDeptDoctorId = specialistDoctor?.Identity || '';
+            appointment.supervising_dept_doctor_id = specialistDoctor?.Identity || '';
+            appointment.deptDoctorId = specialistDoctor?.Identity || '';
+            appointment.generalDoctorId = req.user.Identity || '';
+            console.log(`[APPROVAL] Saving appointment (bookingId: ${appointment.bookingId}, currentDept: ${referredDepartment})...`);
+            await appointment.save();
+            console.log(`[APPROVAL] Appointment saved successfully`);
+
+            console.log(`[APPROVAL] Doctor approved oral case for patient ${caseItem.patientId}. Appointment transferred to ${referredDepartment}`);
+            } // end referredDepartment !== 'Other' guard
+          } else {
+            console.error(`[APPROVAL] No active appointment found for patient ${caseItem.patientId}. Referral transfer skipped.`);
+          }
+        } else {
+          console.warn(`[APPROVAL] No GeneralCase with referral found for patient ${caseItem.patientId}. Referral transfer skipped.`);
+        }
+      } catch (referralError) {
+        console.error('[APPROVAL] Failed to advance referral on approval:', referralError.message, referralError.stack);
+      }
+    }
 
     res.json({
       success: true,

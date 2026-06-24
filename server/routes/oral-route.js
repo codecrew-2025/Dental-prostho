@@ -1,5 +1,6 @@
 import express from 'express';
 import OralCase from '../models/Oral-model.js';
+import Appointment from '../models/AppoitmentBooked.js';
 import auth from '../middleware/auth.js';
 import requireRole from '../middleware/role.js';
 
@@ -65,6 +66,22 @@ router.post('/', auth, async (req, res) => {
     const payload = normalisePayload(req.body);
     const oralCase = new OralCase(payload);
     await oralCase.save();
+
+    // Update the linked appointment's time to reflect completion time
+    if (payload.patientId) {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+
+      await Appointment.findOneAndUpdate(
+        { patientId: payload.patientId, status: { $in: ['pending', 'confirmed', 'assigned', 'in_progress'] } },
+        { appointmentTime: `${hours}:${minutes} ${ampm}` },
+        { sort: { createdAt: -1 } }
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: 'Oral case created successfully',
@@ -98,9 +115,11 @@ router.get('/chief/all-cases', auth, requireRole(['doctor', 'chief', 'chief-doct
   try {
     const { default: GeneralCase } = await import('../models/GeneralCase.js');
 
+    const selectFields = '-xrayImage -digitalSignature';
+
     const [oralCases, generalCases] = await Promise.all([
-      OralCase.find().sort({ createdAt: -1 }).lean(),
-      GeneralCase.find().sort({ createdAt: -1 }).lean(),
+      OralCase.find().select(selectFields).sort({ createdAt: -1 }).limit(200).lean(),
+      GeneralCase.find().select(selectFields).sort({ createdAt: -1 }).limit(200).lean(),
     ]);
 
     const allCases = [...generalCases.map(c => ({ ...c, department: c.department || 'General' })), ...oralCases];

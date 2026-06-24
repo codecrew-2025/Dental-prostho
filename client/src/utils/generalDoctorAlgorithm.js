@@ -10,6 +10,37 @@
 const detectDentalIssues = (form) => {
   const issues = [];
 
+  // Chief complaint based detection (runs first — catches cases with minimal exam data)
+  const cc = (form.chiefComplaint || '').toLowerCase().trim();
+  if (cc) {
+    const ccMappings = [
+      { keywords: ['sensitivity', 'sensitive', 'sensiti'], name: 'Dental Sensitivity', severity: 'Medium', specialists: ['Prosthodontics', 'Conservative Dentistry'], investigations: ['IOPA', 'Bitewing', 'Cold test'] },
+      { keywords: ['pain', 'ache', 'toothache'], name: 'Dental Pain', severity: 'High', specialists: ['Endodontics', 'Conservative Dentistry'], investigations: ['IOPA', 'Bitewing', 'Cold test'] },
+      { keywords: ['missing tooth', 'missing teeth', 'tooth loss', 'teeth missing', 'fallen'], name: 'Tooth Loss', severity: 'Medium', specialists: ['Prosthodontics'], investigations: ['OPG', 'CBCT for implant'] },
+      { keywords: ['broken tooth', 'broken teeth', 'fractured', 'cracked'], name: 'Tooth Fracture', severity: 'High', specialists: ['Prosthodontics', 'Conservative Dentistry'], investigations: ['IOPA', 'Bitewing'] },
+      { keywords: ['swelling', 'swollen', 'abscess'], name: 'Oral Swelling', severity: 'High', specialists: ['Oral & Maxillofacial Surgery', 'Endodontics'], investigations: ['IOPA', 'OPG', 'CBCT'] },
+      { keywords: ['bleeding', 'bleeds', 'gum bleed'], name: 'Gum Bleeding', severity: 'Medium', specialists: ['Periodontics'], investigations: ['OPG', 'Periodontal probing'] },
+      { keywords: ['ulcer', 'sore', 'lesion'], name: 'Oral Ulceration', severity: 'High', specialists: ['Oral Medicine', 'Oral & Maxillofacial Surgery'], investigations: ['Biopsy', 'Histopathology'] },
+      { keywords: ['discolour', 'discolor', 'stain', 'yellow'], name: 'Tooth Discoloration', severity: 'Low', specialists: ['Conservative Dentistry', 'Prosthodontics'], investigations: ['Intraoral photos'] },
+      { keywords: ['malalign', 'crooked', 'overlap', 'crowding', 'spacing', 'gap'], name: 'Malalignment', severity: 'Medium', specialists: ['Orthodontics'], investigations: ['OPG', 'Cephalogram'] },
+      { keywords: ['tmj', 'jaw pain', 'jaw click', 'jaw lock', 'mouth opening'], name: 'TMJ Dysfunction', severity: 'Medium', specialists: ['Oral & Maxillofacial Surgery'], investigations: ['TMJ imaging', 'MRI'] },
+      { keywords: ['prosth', 'denture', 'crown', 'bridge', 'implant'], name: 'Prosthodontic Need', severity: 'Medium', specialists: ['Prosthodontics'], investigations: ['OPG', 'CBCT'] },
+      { keywords: ['root canal', 'rct'], name: 'Endodontic Need', severity: 'High', specialists: ['Endodontics', 'Conservative Dentistry'], investigations: ['IOPA', 'CBCT'] },
+      { keywords: ['extraction', 'remove tooth', 'pull tooth'], name: 'Extraction Needed', severity: 'High', specialists: ['Oral & Maxillofacial Surgery'], investigations: ['OPG', 'IOPA'] },
+      { keywords: ['scaling', 'cleaning', 'calculus', 'tartar'], name: 'Periodontal Disease', severity: 'Medium', specialists: ['Periodontics'], investigations: ['OPG', 'Periodontal probing'] },
+      { keywords: ['caries', 'cavity', 'decay', 'hole'], name: 'Dental Caries', severity: 'High', specialists: ['Conservative Dentistry', 'Endodontics'], investigations: ['IOPA', 'Bitewing'] },
+    ];
+
+    for (const mapping of ccMappings) {
+      if (mapping.keywords.some(kw => cc.includes(kw))) {
+        // Avoid duplicate if already detected from exam findings
+        if (!issues.some(i => i.name === mapping.name)) {
+          issues.push({ name: mapping.name, severity: mapping.severity, specialists: mapping.specialists, investigations: mapping.investigations });
+        }
+      }
+    }
+  }
+
   // Caries detection
   if (form.dentalCaries && form.dentalCaries.toLowerCase().includes('present')) {
     issues.push({

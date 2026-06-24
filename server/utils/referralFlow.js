@@ -86,8 +86,8 @@ export const pickSpecialistDoctorForDepartment = async (departmentLabel) => {
 
   const eligibleDoctors = sortUsersForAssignment(
     doctors.filter((doctor) => {
-      const departmentKey = normalizeDepartment(doctor.department);
-      return !GENERAL_DEPARTMENT_KEYS.has(departmentKey) && aliases.includes(departmentKey);
+      const deptKey = normalizeLabelToDepartmentKey(doctor.department);
+      return deptKey !== 'general' && aliases.includes(deptKey);
     })
   );
 
@@ -180,6 +180,14 @@ const updateUpcomingAppointmentAssignment = async ({ patientId, assignedPgId, sp
   appt.pgDoctorId = assignedPgId || null;
   appt.supervisingDeptDoctorId = specialistDoctorId || null;
   appt.supervising_dept_doctor_id = specialistDoctorId || null;
+
+  // Update appointment time to the time when the case sheet was finished
+  const now = new Date();
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  appt.appointmentTime = `${hours}:${minutes} ${ampm}`;
 
   // Move appointment to the next department's visibility
   if (nextDepartment) {
@@ -284,7 +292,7 @@ export const advanceGeneralCaseReferralIfEligible = async ({
       patientId: normalizedPatientId,
       assignedPgId: assignedPg.Identity,
       specialistDoctorId: specialistDoctor?.Identity || '',
-      completedByIdentity,
+      completedByIdentity: completedById,
       nextDepartment: caseItem.referredDepartment,
     });
   }

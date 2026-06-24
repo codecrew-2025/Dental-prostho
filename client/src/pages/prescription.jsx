@@ -649,33 +649,64 @@ const Prescription = () => {
       if (!currentPatientId) return;
 
       const token = localStorage.getItem('token');
-      const response = await fetch(
-        buildApiUrl(`/api/general/patient/${encodeURIComponent(currentPatientId)}`),
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+      let chiefComplaint = '';
+      let diagnosisText = '';
+
+      // Try General Case Sheet first
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/general/patient/${encodeURIComponent(currentPatientId)}`),
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          const latestCase = Array.isArray(result?.data) ? result.data[0] : null;
+          if (latestCase) {
+            chiefComplaint = String(latestCase.chiefComplaint || '').trim();
+            diagnosisText = String(latestCase.finalDiagnosis || latestCase.provisionalDiagnosis || '').trim();
+          }
         }
-      );
+      } catch (e) {
+        // ignore
+      }
 
-      if (!response.ok) return;
+      // Fallback to Oral Medicine case sheet if no chief complaint found
+      if (!chiefComplaint) {
+        try {
+          const oralResponse = await fetch(
+            buildApiUrl(`/api/oral/patient/${encodeURIComponent(currentPatientId)}`),
+            {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }
+          );
 
-      const result = await response.json();
-      const latestCase = Array.isArray(result?.data) ? result.data[0] : null;
-      if (!latestCase) return;
+          if (oralResponse.ok) {
+            const oralResult = await oralResponse.json();
+            const latestOralCase = Array.isArray(oralResult?.data) ? oralResult.data[0] : null;
+            if (latestOralCase) {
+              chiefComplaint = String(latestOralCase.chiefComplaint || '').trim();
+              if (!diagnosisText) {
+                diagnosisText = String(latestOralCase.finalDiagnosis || latestOralCase.provisionalDiagnosis || '').trim();
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
 
-      const chiefComplaint = String(latestCase.chiefComplaint || '').trim();
       if (chiefComplaint) {
         setSymptoms((prev) => (String(prev || '').trim() ? prev : chiefComplaint));
       }
-
-      const diagnosisText = String(
-        latestCase.finalDiagnosis || latestCase.provisionalDiagnosis || ''
-      ).trim();
 
       if (diagnosisText) {
         setDiagnosis((prev) => (String(prev || '').trim() ? prev : diagnosisText));
       }
     } catch (error) {
-      console.error('Error pre-filling from latest General Case:', error);
+      console.error('Error pre-filling from latest case:', error);
     }
   };
 

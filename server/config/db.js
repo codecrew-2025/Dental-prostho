@@ -46,6 +46,7 @@ const getConnectOptions = () => {
     connectTimeoutMS,
     family: 4,
     heartbeatFrequencyMS: 10000,
+    tlsAllowInvalidCertificates: true,
   };
 };
 
@@ -106,7 +107,6 @@ const connectDB = async () => {
           return;
         } catch (retryError) {
           console.error("❌ MongoDB connection failed after DNS override:", retryError.message);
-          throw retryError;
         }
       }
     }

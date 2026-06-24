@@ -459,7 +459,7 @@ const ChiefDoctorDashboard = () => {
       const requests = endpoints.map(async (ep) => {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
           const res = await fetch(ep.url, {
             signal: controller.signal,
             headers: {
@@ -470,29 +470,39 @@ const ChiefDoctorDashboard = () => {
           clearTimeout(timeoutId);
 
           if (!res.ok) {
-            console.warn(`[${ep.department}] ${res.status} - ${res.statusText}`);
-            return [];
+            const errText = `[${ep.department}] ${res.status} - ${res.statusText}`;
+            console.warn(errText);
+            return { error: errText, data: [] };
           }
 
           const json = await res.json();
-          return (json.data || []).map((c) => ({
+          return { error: null, data: (json.data || []).map((c) => ({
             ...c,
             department: ep.department,
-          }));
+          })) };
         } catch (e) {
-          console.error(`[${ep.department}] Error:`, e.message);
-          return [];
+          const errText = e.name === 'AbortError'
+            ? `[${ep.department}] Request timed out after 30s - server not responding`
+            : `[${ep.department}] Error: ${e.message}`;
+          console.error(errText);
+          return { error: errText, data: [] };
         }
       });
 
       const results = await Promise.all(requests);
-      const merged = results.flat();
+      const allData = results.flatMap(r => r.data);
+      const firstError = results.find(r => r.error)?.error || '';
 
-      merged.sort(
+      allData.sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
       );
 
-      setCases(merged);
+      setCases(allData);
+      if (!allData.length && firstError) {
+        setError(firstError);
+      } else {
+        setError('');
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to fetch cases");
@@ -1679,6 +1689,12 @@ const ChiefDoctorDashboard = () => {
                   <button onClick={fetchCases} type="button">
                     Retry
                   </button>
+                </div>
+              )}
+
+              {loading && (
+                <div className="omr-view-loading" style={{ textAlign: 'center', padding: '40px', color: '#a5b4fc' }}>
+                  Loading case files...
                 </div>
               )}
 

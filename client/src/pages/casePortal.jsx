@@ -88,7 +88,6 @@ const CasePortal = () => {
         {/* Oral and Maxillofacial sub-options */}
         {showOral && (
           <div className="sub-options" id="oralSubOptions">
-            <button className="button-portal" onClick={() => startCaseFlow('/oral-medicine')}>General Case Sheet</button>
             <button className="button-portal" onClick={() => startCaseFlow('/casePortal')}>Clef Lip</button>
             <button className="button-portal" onClick={() => startCaseFlow('/casePortal')}>Trauma</button>
             <button className="button-portal" onClick={() => startCaseFlow('/casePortal')}>Impaction</button>

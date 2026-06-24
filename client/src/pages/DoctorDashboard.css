@@ -783,7 +783,7 @@
   flex-wrap: wrap;
 }
 
-.save-btn, .case-files-btn, .case-history-btn {
+.save-btn, .case-files-btn, .case-history-btn, .general-case-btn {
   padding: 1rem 2rem;
   font-size: 1rem;
   font-weight: 600;
@@ -830,13 +830,24 @@
   box-shadow: 0 8px 25px rgba(37, 99, 235, 0.4);
 }
 
-.save-btn:disabled {
+.general-case-btn {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  color: white;
+}
+
+.general-case-btn:hover {
+  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
+}
+
+.save-btn:disabled, .general-case-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
 }
 
-.save-btn:active, .case-files-btn:active, .case-history-btn:active {
+.save-btn:active, .case-files-btn:active, .case-history-btn:active, .general-case-btn:active {
   transform: translateY(-1px);
 }
 

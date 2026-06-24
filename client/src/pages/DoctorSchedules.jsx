@@ -131,8 +131,10 @@ const DoctorSchedule = () => {
       console.error("Error loading appointments:", error.response || error);
       if (error.response && error.response.status === 401) {
         showMessage("Login required or session expired. Please log in again.", "error");
+      } else if (error.response) {
+        showMessage(`Failed to load appointments: ${error.response.status} - ${error.response.statusText || 'Server error'}`, "error");
       } else {
-        showMessage("Failed to load appointments from server.", "error");
+        showMessage("Failed to load appointments from server. Check if the backend is running.", "error");
       }
     }
   };

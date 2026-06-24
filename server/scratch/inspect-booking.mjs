@@ -1,22 +1,15 @@
-import dns from 'dns';
-dns.setServers(['8.8.8.8', '1.1.1.1']);
-
 import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.join(process.cwd(), 'server', '.env') });
 
-import mongoose from 'mongoose';
+import connectDB from '../config/db.js';
 import Appointment from '../models/AppoitmentBooked.js';
 
 const run = async () => {
-  if (!process.env.MONGO_URI) {
-    console.error('MONGO_URI is missing from env!');
-    process.exit(1);
-  }
-  await mongoose.connect(process.env.MONGO_URI, { tlsAllowInvalidCertificates: true });
-  const appt = await Appointment.findOne({ bookingId: 'SRMDNT292608' }).lean();
-  console.log('=== APPOINTMENT DETAIL ===');
-  console.log(JSON.stringify(appt, null, 2));
+  await connectDB();
+  const appts = await Appointment.find({ patientId: '2606012' }).lean();
+  console.log('=== APPOINTMENTS FOR 2606012 ===');
+  console.log(JSON.stringify(appts, null, 2));
   process.exit(0);
 };
 

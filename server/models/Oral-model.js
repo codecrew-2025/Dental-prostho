@@ -185,6 +185,9 @@ const OralCaseSchema = new mongoose.Schema(
     approvedAt:    { type: Date },
 
     additionalNotes: { type: String, trim: true },
+
+    // ── X-ray Image (base64 data URL) ────────────────────────────────────
+    xrayImage: { type: String, trim: true },
   },
   { timestamps: true }
 );

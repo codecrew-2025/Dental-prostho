@@ -47,6 +47,8 @@ import UGDashboard from './pages/UGDashboard';
 import ConsentForm from './pages/consentform';
 import CampDashboard from './pages/CampDashboard';
 import ConservativeDentistry from './pages/departments/ConservativeDentistry';
+import GeneralCaseSheet from './pages/Generalcasesheet';
+import GeneralCaseSheetView from './pages/GeneralCaseSheetView';
 
 const getDashboardRouteByRole = (role) => {
   const normalizedRole = String(role || '').trim().toLowerCase();
@@ -433,6 +435,16 @@ const AppRoutes = () => {
         <Route path='/admin-dashboard/billing/case' element={<BillX />} />
         <Route path='/admin-dashboard/billing/xray' element={<XRayBilling />} />
         <Route path='/consent-form' element={<ConsentForm />} />
+        <Route path="/general-case-sheet" element={
+          <ProtectedRoute allowedRoles={['doctor', 'chief', 'chief-doctor', 'pg', 'ug']}>
+            <GeneralCaseSheet />
+          </ProtectedRoute>
+        } />
+        <Route path="/general-case-view" element={
+          <ProtectedRoute allowedRoles={['doctor', 'chief', 'chief-doctor', 'pg', 'ug']}>
+            <GeneralCaseSheetView />
+          </ProtectedRoute>
+        } />
 
         <Route path='/reset-password' element={<ForgetPassword />} />
         <Route path="/unauthorized" element={<center><h2>UnAuthorized Access Try!</h2></center>} />

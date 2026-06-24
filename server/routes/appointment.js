@@ -23,6 +23,31 @@ const GENERAL_DOCTOR_DEPARTMENT_KEYS = new Set(['general', 'generaldentistry', '
 const ORAL_MEDICINE_DEPT_KEYS = new Set(['oralmedicine', 'oralmedicineandradiology', 'oralmedicineradiology']);
 const ORAL_MEDICINE_DEPT_LABEL = 'Oral Medicine and Radiology';
 
+const departmentAliasMap = {
+  prosthodontics: ['prosthodontics', 'prothodontics', 'prosthondontics'],
+  pedodontics: ['pedodontics'],
+  periodontics: ['periodontics'],
+  conservativedentistryandendodontics: ['conservativedentistryandendodontics', 'conservativedentistry', 'endodontics'],
+  oralandmaxillofacial: ['oralandmaxillofacial', 'oralmaxillofacial', 'oralsurgery'],
+  general: ['general', 'generaldentistry', 'oralmedicine', 'oralmedicineandradiology'],
+};
+
+const normalizeLabelToDepartmentKey = (departmentLabel) => {
+  const normalized = normalizeDepartment(departmentLabel);
+  if (normalized.startsWith('prostho') || normalized.startsWith('protho') || normalized.startsWith('prosth')) return 'prosthodontics';
+  if (normalized === 'pedodontics') return 'pedodontics';
+  if (normalized === 'periodontics') return 'periodontics';
+  if (normalized.includes('conservative') || normalized.includes('endodontic') || normalized.includes('endodontics')) return 'conservativedentistryandendodontics';
+  if (normalized.includes('oral') || normalized.includes('maxillofacial')) return 'oralandmaxillofacial';
+  if (GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalized)) return 'general';
+  return normalized;
+};
+
+const getDepartmentAliases = (departmentLabel) => {
+  const departmentKey = normalizeLabelToDepartmentKey(departmentLabel);
+  return departmentAliasMap[departmentKey] || [departmentKey];
+};
+
 /* ✅ CONFIRM ROUTER LOAD */
 console.log("✅ Appointment router loaded successfully");
 
@@ -855,12 +880,6 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
           ] : []),
         ],
         status: { $nin: excludedStatuses },
-        $and: [{
-          $or: [
-            { appointmentDate: { $gte: todayStr } },
-            { patientRescheduleStatus: "rejected" }
-          ]
-        }]
       }).sort({ appointmentDate: -1, appointmentTime: -1 });
 
       // Merge patient IDs from both GeneralCase and direct assignment
@@ -881,10 +900,6 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
       const appointments = await Appointment.find({
         patientId: { $in: allPatientIds },
         status: { $nin: excludedStatuses },
-        $or: [
-          { appointmentDate: { $gte: todayStr } },
-          { patientRescheduleStatus: "rejected" }
-        ],
       }).sort({ appointmentDate: -1, appointmentTime: -1 });
 
       // Enrich with patient names and PG info
@@ -943,6 +958,7 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
 
       const userDepartment = String(req.user?.department || '').trim();
       const normalizedUserDept = normalizeDepartment(userDepartment);
+      const userDeptKey = normalizeLabelToDepartmentKey(userDepartment);
       const isGeneralDept = GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalizedUserDept);
 
       let appointments;
@@ -963,27 +979,17 @@ router.get("/pg-appointments", auth, requireRole(["doctor", "chief-doctor", "pg"
             { pgDoctorId: rawIdentity },
           ],
           status: { $nin: excludedStatuses },
-          $and: [{
-            $or: [
-              { appointmentDate: { $gte: todayStr } },
-              { patientRescheduleStatus: "rejected" }
-            ]
-          }]
         };
         const candidateAppts = await Appointment.find(candidateQuery).sort({ appointmentDate: -1, appointmentTime: -1 });
 
-        const deptAppts = normalizedUserDept ? await Appointment.find({
+        const deptAppts = userDeptKey ? await Appointment.find({
           status: { $nin: excludedStatuses },
-          $or: [
-            { appointmentDate: { $gte: todayStr } },
-            { patientRescheduleStatus: "rejected" }
-          ],
         }).sort({ appointmentDate: -1, appointmentTime: -1 }) : [];
 
         const seenBookingIds = new Set(candidateAppts.map(a => a.bookingId));
         deptAppts.forEach(a => {
-          const apptDept = normalizeDepartment(a.currentDepartment || '');
-          if (apptDept === normalizedUserDept && !seenBookingIds.has(a.bookingId)) {
+          const apptDeptKey = normalizeLabelToDepartmentKey(a.currentDepartment || '');
+          if (apptDeptKey && userDeptKey && apptDeptKey === userDeptKey && !seenBookingIds.has(a.bookingId)) {
             candidateAppts.push(a);
             seenBookingIds.add(a.bookingId);
           }
@@ -1102,7 +1108,7 @@ router.get("/all-appointments", auth, requireRole(["admin", "chief", "chief-doct
     if (requesterRole === 'doctor') {
       // Doctors see all non-terminal appointments in their department or assigned to them/their PGs
       const doctorDepartment = String(req.user?.department || '').trim();
-      const normalizedDoctorDept = normalizeDepartment(doctorDepartment);
+      const doctorDeptKey = normalizeLabelToDepartmentKey(doctorDepartment);
       const doctorIdentity = String(req.user?.Identity || '').trim();
 
       // Find PGs created by this doctor
@@ -1113,22 +1119,21 @@ router.get("/all-appointments", auth, requireRole(["admin", "chief", "chief-doct
       const pgIdentities = students.map(s => String(s.Identity || '').trim()).filter(Boolean);
 
       // General departments get ALL non-terminal appointments
-      const isGeneralDept = GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalizedDoctorDept);
+      const isGeneralDept = GENERAL_DOCTOR_DEPARTMENT_KEYS.has(normalizeDepartment(doctorDepartment));
       if (isGeneralDept) {
         appointments = await Appointment.find({
           status: { $nin: excludedStatuses },
         }).sort({ appointmentDate: -1, appointmentTime: -1 });
       } else {
-        // Find all appointments matching the doctor's department, their PGs, or their own assignments
+        // Find all non-terminal appointments
         const allAppts = await Appointment.find({
           status: { $nin: excludedStatuses },
-          appointmentDate: { $gte: todayStr },
         }).sort({ appointmentDate: -1, appointmentTime: -1 });
 
-        // Filter: match by normalized currentDepartment, or by direct assignment
+        // Filter: match by canonical department key, or by direct assignment
         appointments = allAppts.filter(a => {
-          const apptDept = normalizeDepartment(a.currentDepartment || '');
-          if (normalizedDoctorDept && apptDept === normalizedDoctorDept) return true;
+          const apptDeptKey = normalizeLabelToDepartmentKey(a.currentDepartment || '');
+          if (apptDeptKey && doctorDeptKey && apptDeptKey === doctorDeptKey) return true;
           if (doctorIdentity) {
             if (a.doctorId === doctorIdentity) return true;
             if (a.supervisingDeptDoctorId === doctorIdentity) return true;
